@@ -113,12 +113,12 @@ let () =
   (regs r).(3) <- 0xCAFE;
   F.single_step r;
   eqx "mov_register" (regs r).(1) 0xCAFE;
-  (* MOV flags read: hardware 0x50 low byte + N/Z/C/V in the top nibble. *)
+  (* MOV flags read: hardware 0x53 low byte + N/Z/C/V in the top nibble. *)
   let r = cpu () in
   (ram r).(0) <- reg 0 1 1 1 0 mov 0;
   F.set_flags r (F.flags r lor flag_n lor flag_c);
   F.single_step r;
-  eqx "mov_flags_read_0x50" (regs r).(1) (0x50 lor 0x8000_0000 lor 0x2000_0000);
+  eqx "mov_flags_read_0x53" (regs r).(1) (0x53 lor 0x8000_0000 lor 0x2000_0000);
   (* ---- shifts / logical ---- *)
   let r = cpu () in
   (ram r).(0) <- reg 0 0 0 1 2 lsl_ 3;

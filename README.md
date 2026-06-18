@@ -118,7 +118,7 @@ dune exec bin/risc.exe -- --headless --frames 60 DiskImage/Oberon-2020-08-18.dsk
   over the damaged region, scaled by SDL's renderer (not the Rust port's manual
   scaler).
 - **One intentional divergence** (from the Rust port): reading the CPU flags via
-  `MOV` returns the hardware's `0x50` id byte where the C emits `0xD0` — inert to
+  `MOV` returns the hardware's `0x53` id byte where the C emits `0xD0` — inert to
   Oberon, which never reads it. See the Rust port's `DIVERGENCES.md`.
 
 ## Scope

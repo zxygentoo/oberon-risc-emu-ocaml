@@ -327,11 +327,12 @@ let single_step t =
           then U32.shl c_val 16
           else if ir land vbit <> 0
           then
-            (* Reading the flags: the low byte is the hardware's CPU-id byte 0x50
-               (RISC5.v:139). The C reference emits 0xD0; we follow the hardware
-               and the Rust port; see
+            (* Reading the flags: the low byte is the hardware's CPU-id byte
+               0x53. RISC5.v:113 reads {N, Z, C, OV, 20'b0, 8'h53}; the C
+               reference emits 0xD0 instead. We follow the hardware and the
+               Rust port; see
                https://github.com/zxygentoo/oberon-risc-emu-rs/blob/main/DIVERGENCES.md *)
-            0x50
+            0x53
             lor (Bool.to_int (has t flag_n) lsl 31)
             lor (Bool.to_int (has t flag_z) lsl 30)
             lor (Bool.to_int (has t flag_c) lsl 29)

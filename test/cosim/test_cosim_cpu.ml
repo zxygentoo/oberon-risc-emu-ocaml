@@ -13,7 +13,7 @@
    we never fetch from the void.
 
    Both run with PC = 0 (the region origin). The one intentional divergence
-   (MOV-flags-read, 0x50 vs C's 0xD0) is filtered, dynamically too (a store can
+   (MOV-flags-read, 0x53 vs C's 0xD0) is filtered, dynamically too (a store can
    forge one). Gated behind the `cosim` alias. Run with: dune build @cosim *)
 
 open Risc_core
