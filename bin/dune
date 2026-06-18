@@ -1,0 +1,13 @@
+; The frontend helpers live in a (wrapped false) library so the tests can reach
+; Ps2 / Cli / Render directly; the executable is just the entry point.
+
+(library
+ (name oberon_frontend)
+ (modules ps2 render cli sdl_clipboard)
+ (wrapped false)
+ (libraries risc_core tsdl))
+
+(executable
+ (name risc)
+ (modules risc)
+ (libraries oberon_frontend risc_core tsdl unix))

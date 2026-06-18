@@ -1,0 +1,32 @@
+; Core tests (risc_core only) — including the vendored FP vectors and the boot
+; golden, which need their data files as deps.
+
+(tests
+ (names
+  test_risc
+  test_pclink
+  test_clipboard
+  test_disk
+  test_raw_serial
+  test_fp_vectors
+  test_boot)
+ (libraries risc_core unix)
+ (deps data/fp_vectors.txt ../DiskImage/Oberon-2020-08-18.dsk))
+
+; Frontend tests (the testable bin library + tsdl; no SDL_Init at runtime).
+
+(tests
+ (names test_ps2 test_cli test_scale)
+ (libraries oberon_frontend tsdl))
+
+; Property-based tests (QCheck) — spans the core and frontend.
+
+(test
+ (name test_prop)
+ (libraries
+  risc_core
+  oberon_frontend
+  tsdl
+  unix
+  qcheck-core
+  qcheck-core.runner))

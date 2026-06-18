@@ -1,0 +1,40 @@
+; Differential lockstep against the C reference (gated behind the `cosim` alias,
+; so the default `dune test` stays portable — this needs a C toolchain).
+; Run with:  dune build @cosim
+;
+; The C sources (risc.c, risc.h, risc-io.h, risc-boot.inc, risc_fp.c, risc-fp.h)
+; are vendored verbatim from Peter De Wachter's oberon-risc-emu (src/), only
+; risc-fp.c renamed to risc_fp.c. Each stub textually #includes what it needs
+; (listed in extra_deps), so the vendored C is never a shared dune stub.
+
+; Layer 1: software FP / idiv.
+
+(executable
+ (name test_cosim_fp)
+ (libraries risc_core qcheck-core qcheck-core.runner)
+ (foreign_stubs
+  (language c)
+  (names ml_csim_fp)
+  (extra_deps risc_fp.c risc-fp.h)))
+
+; Layer 2: single-instruction CPU lockstep.
+
+(executable
+ (name test_cosim_cpu)
+ (libraries risc_core qcheck-core qcheck-core.runner)
+ (foreign_stubs
+  (language c)
+  (names cpu_csim)
+  (extra_deps risc.c risc.h risc-io.h risc-boot.inc risc_fp.c risc-fp.h)))
+
+(rule
+ (alias cosim)
+ (deps test_cosim_fp.exe)
+ (action
+  (run ./test_cosim_fp.exe)))
+
+(rule
+ (alias cosim)
+ (deps test_cosim_cpu.exe)
+ (action
+  (run ./test_cosim_cpu.exe)))

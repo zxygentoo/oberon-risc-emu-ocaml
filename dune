@@ -1,0 +1,9 @@
+; Release builds raise the inliner threshold (stock default is 10) so the tiny
+; per-instruction helpers — U32.* (add/wrap/shl/...), has, set_flag, op_of_int —
+; are inlined into the CPU hot loop. The stock, non-flambda compiler only inlines
+; across modules under -inline, and these functions sit well under the cost
+; threshold; 100 is enough (higher only bloats the varied boot path). ~+8% boot.
+(env
+ (release
+  (ocamlopt_flags
+   (:standard -inline 100))))
