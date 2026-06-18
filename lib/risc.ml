@@ -329,7 +329,8 @@ let single_step t =
           then
             (* Reading the flags: the low byte is the hardware's CPU-id byte 0x50
                (RISC5.v:139). The C reference emits 0xD0; we follow the hardware
-               and the Rust port. See DIVERGENCES.md. *)
+               and the Rust port; see
+               https://github.com/zxygentoo/oberon-risc-emu-rs/blob/main/DIVERGENCES.md *)
             0x50
             lor (Bool.to_int (has t flag_n) lsl 31)
             lor (Bool.to_int (has t flag_z) lsl 30)
