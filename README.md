@@ -1,53 +1,26 @@
-# oberon-risc-emu-ml
+# oberon-risc-emu-ocaml
 
-An OCaml port of [Peter De Wachter's `oberon-risc-emu`][c] — an emulator for the
-RISC5 machine that runs Niklaus Wirth's [Project Oberon][po] (2013). It is ported
-from the Rust port [`oberon-risc-emu-rs`][rs] (itself a bit-exact port of the C),
-and uses [`tsdl`][tsdl] (SDL2) for the window, rendering, and input.
+An OCaml port of [Peter De Wachter's `oberon-risc-emu`][c], an emulator for the
+RISC5 machine that runs Niklaus Wirth's [Project Oberon][po] (2013). It follows
+the Rust port [`oberon-risc-emu-rs`][rs] and uses [`tsdl`][tsdl] (SDL2) for the
+window, rendering, and input.
 
-The emulated machine — CPU, software floating point, MMIO, SD-card disk, serial
-(PCLink / raw), and the clipboard bridge — is a faithful, **bit-exact** port: a
-booted screen and the full CPU state hash identically to the C reference, and the
-CPU is checked against the C instruction-by-instruction (see
-[Verifying correctness](#verifying-correctness)).
-
-## Layout
-
-```
-lib/         risc_core: the pure machine (no SDL), one module per C/Rust source
-  u32.ml         exact 32-bit arithmetic on OCaml's native int
-  fp.ml          software FP + integer division   (risc-fp.c)
-  boot_rom.ml    the 512-word boot PROM            (risc-boot.inc)
-  io.ml          device-callback record types      (risc-io.h)
-  risc.ml        CPU core, memory map, MMIO        (risc.c)
-  disk.ml        SPI SD-card state machine         (disk.c)
-  pclink.ml      PCLink file transfer over serial  (pclink.c)
-  raw_serial.ml  raw host serial line (Unix)       (raw-serial.c)
-  clipboard.ml   host<->Oberon clipboard bridge    (sdl-clipboard.c)
-  headless.ml    deterministic driver + FNV hashing
-bin/         risc: the windowed frontend (tsdl). ps2/render/cli/sdl_clipboard
-             are a small library (oberon_frontend) the tests link against;
-             risc.ml is just the entry point.
-  ps2.ml         SDL scancode -> PS/2 set-2        (sdl-ps2.c)
-  sdl_clipboard.ml  SDL clipboard host
-  render.ml      framebuffer -> ARGB texture + scaling (sdl-main.c)
-  cli.ml         command-line parsing
-  risc.ml        window, 60 fps clock loop, event dispatch, headless runner
-test/        the test suite (see Verifying correctness)
-  data/          the frozen FP vectors
-  cosim/         vendored C reference for the differential lockstep
-validate/    SDL-free golden-hash checker (boots a disk image headless)
-DiskImage/   Oberon-2020-08-18.dsk (a bootable Project Oberon image)
-```
+The whole machine — CPU, software floating point, MMIO, SD-card disk, serial, and
+clipboard — is a **bit-exact** port, verified against the C reference down to
+individual instructions (see [Verifying correctness](#verifying-correctness)).
 
 ## Requirements
 
-- OCaml >= 4.08, dune >= 3
-- `tsdl` (`opam install tsdl`) and the SDL2 system library
-- Unix (the disk, PCLink, and raw-serial devices use the `unix` library)
-- `qcheck-core` (`opam install qcheck-core`) — for the property tests
-- A C compiler — already needed for OCaml/`tsdl`; also compiles the vendored C
-  reference used by the `@cosim` differential tests
+OCaml ≥ 4.08, dune ≥ 3, a C compiler, and the SDL2 system library. Install the
+OCaml dependencies with opam:
+
+```sh
+opam install dune tsdl qcheck-core
+```
+
+`tsdl` binds SDL2; `qcheck-core` drives the property tests. The C compiler
+(already needed by `tsdl`) also builds the vendored C reference for the `@cosim`
+tests.
 
 ## Build & run
 
@@ -95,22 +68,19 @@ the middle button. Keyboard shortcuts:
 dune test
 ```
 
-runs the whole suite — ~20,000 enumerated assertions (dominated by the FP
-vectors) plus thousands of randomized QCheck cases:
+runs the full suite — ~20,000 enumerated assertions (mostly FP vectors) plus
+thousands of randomized QCheck cases:
 
-- **boot golden** — boots the bundled image under the deterministic 60 Hz clock
-  and asserts the framebuffer + CPU-state FNV-1a hashes match the frozen values
-  (identical to the Rust reference); one check exercising CPU + FP + disk + MMIO
-  + damage end-to-end.
-- **FP vectors** — replays all 19,760 C-derived vectors (`test/data/fp_vectors.txt`)
-  through the software FP/idiv, asserting bit-identical output.
-- **device protocols** — disk (SD/SPI), PCLink (REC/SND), clipboard (GET/PUT),
-  raw serial.
-- **CPU** — instruction-level checks, MMIO dispatch, `configure_memory`, reset.
-- **frontend** — PS/2 scancode encoding, CLI parsing, display scaling.
-- **property-based** (QCheck) — randomized, oracle-free laws: `U32` algebra,
-  memory round-trips, the Z/N flag invariant over all register ops, disk and
-  PCLink round-trips, `scale_rect` placement, and FP commutativity/sign.
+- **boot golden** — boots the bundled image under a deterministic 60 Hz clock and
+  checks the framebuffer and CPU-state FNV-1a hashes against frozen values
+  (identical to the Rust reference).
+- **FP vectors** — replays all 19,760 C-derived vectors through the software
+  FP/idiv for bit-identical output.
+- **devices** — disk (SD/SPI), PCLink, clipboard, raw serial.
+- **CPU & frontend** — instruction-level checks, MMIO, `configure_memory`, reset;
+  PS/2 encoding, CLI parsing, display scaling.
+- **property-based** (QCheck) — oracle-free laws: `U32` algebra, memory
+  round-trips, the Z/N flag invariant, device round-trips, FP commutativity/sign.
 
 ### Differential lockstep against the C reference
 
@@ -118,27 +88,13 @@ vectors) plus thousands of randomized QCheck cases:
 dune build @cosim
 ```
 
-runs *live* differential tests against Peter De Wachter's C — the strongest
-oracle for a bit-exact port:
-
-- **Layer 1 — FP/idiv**: the software FP routines on 400,000 random inputs
-  against the C `fp_*`/`idiv` over FFI (extending the frozen vectors to the
-  unbounded `u32` space).
-- **Layer 2 — single-instruction CPU lockstep**: 200,000 random instructions
-  over random architectural state, stepped once in both the OCaml port and the C
-  (`risc_single_step`, reached by `#include`-ing `risc.c`), comparing the full
-  state + an 8-word RAM window. Covers the whole decode/ALU/shifter/flag/branch
-  space, including paths the boot never reaches. The one intentional divergence
-  (MOV-flags-read, `0x50` vs C's `0xD0`) is filtered; QCheck shrinks any failure
-  to a minimal instruction word.
-- **Layer 3 — burst lockstep**: 5,000 streams of 64 random non-branch
-  instructions over random state, run instruction-by-instruction with the full
-  state + region compared after *every* step. Reaches what the single-instruction
-  sampler can't — back-to-back PC progression, store-then-load memory chains, and
-  values/flags flowing between ops.
-
-The C reference is vendored under `test/cosim/` and these need a C toolchain, so
-they are gated behind the `cosim` alias and kept out of the default `dune test`.
+runs *live* tests against Peter De Wachter's C (vendored under `test/cosim/`,
+reached via `#include`) — the strongest oracle for a bit-exact port. Three layers:
+the FP routines on 400,000 random inputs; 200,000 single random instructions over
+random state; and 5,000 bursts of 64 instructions compared after every step.
+Together they cover the whole decode/ALU/flag/branch space, including paths the
+boot never reaches. They need a C toolchain, so they are gated behind the `cosim`
+alias and kept out of `dune test`.
 
 The boot is deterministic, so you can also reproduce the golden hashes by hand —
 matching the Rust reference's `--headless --frames` output exactly:
@@ -148,46 +104,41 @@ dune exec bin/risc.exe -- --headless --frames 60 DiskImage/Oberon-2020-08-18.dsk
 # frames=60 framebuffer_fnv1a=0xb9bdbf56ba51298d state_fnv1a=0x66a3e6fd77a6b491 blank_words=21929/24576
 ```
 
-`validate/` does the same check without linking SDL, exercising only `risc_core`:
-
-```sh
-dune exec validate/validate.exe -- DiskImage/Oberon-2020-08-18.dsk 60
-```
+`validate/validate.exe` runs the same check without SDL, exercising only
+`risc_core`.
 
 ## Implementation notes
 
-- **32-bit arithmetic.** Machine words are stored as OCaml's native `int` (63-bit
-  on a 64-bit host) reduced modulo 2^32; see `lib/u32.ml`. `Int64` is used only
-  where a genuine 64-bit intermediate is needed (the `MUL` product and the
-  integer-division RQ register). This assumes a 64-bit OCaml runtime.
-- **Devices** are records of closures over each device's mutable state (`io.ml`),
-  the OCaml analogue of the C's structs of function pointers / the Rust traits.
-- **Rendering** follows the C SDL frontend rather than the Rust winit/softbuffer
-  one: a streaming ARGB texture is refreshed only over the damaged framebuffer
-  region, and SDL's renderer does the bilinear scale into the window
-  (`SDL_HINT_RENDER_SCALE_QUALITY = "best"`).
-- **One intentional divergence**, inherited from the Rust port: reading the CPU
-  flags via `MOV` returns the hardware's `0x50` CPU-id byte in the low byte
-  (RISC5.v), where the C reference emits `0xD0`. This is inert to booting Oberon,
-  which never reads that byte. See the Rust port's `DIVERGENCES.md`.
+- **32-bit arithmetic** uses OCaml's native `int` reduced modulo 2^32
+  (`lib/u32.ml`); `Int64` appears only for the `MUL` product and the division
+  remainder. Assumes a 64-bit runtime.
+- **Devices** are records of closures over each device's state (`io.ml`) — the
+  OCaml analogue of the C's function-pointer structs / Rust's traits.
+- **Rendering** follows the C frontend: a streaming ARGB texture refreshed only
+  over the damaged region, scaled by SDL's renderer (not the Rust port's manual
+  scaler).
+- **One intentional divergence** (from the Rust port): reading the CPU flags via
+  `MOV` returns the hardware's `0x50` id byte where the C emits `0xD0` — inert to
+  Oberon, which never reads it. See the Rust port's `DIVERGENCES.md`.
 
 ## Scope
 
-This port covers the **emulator** — the `risc_core` machine and the windowed
-frontend — plus the differential-lockstep harness that checks it against the C
-live (`dune build @cosim`, above).
-
-**Out of scope** is the Rust workspace's `host-tools` crate: the
-`norebo`/inner-core toolchain for building disk images from Oberon source, a host
-build tool rather than part of running Oberon. One slice of the cosim is also
-left for later — full-boot lockstep (booting both emulators from a disk image and
-comparing) — since the deterministic boot-golden hash already pins that path.
+This port covers the emulator — the `risc_core` machine and the tsdl frontend —
+plus the differential-lockstep harness. Out of scope: the Rust workspace's
+`host-tools` (the `norebo` toolchain for building disk images from source), and
+full-boot lockstep (the deterministic boot-golden hash already pins that path).
 
 ## Credits
 
 - Original C emulator: Peter De Wachter — <https://github.com/pdewacht/oberon-risc-emu>
 - Project Oberon: Niklaus Wirth and Jürg Gutknecht — <https://www.projectoberon.com>
 - Rust port (the direct source for this port): `oberon-risc-emu-rs` — <https://github.com/zxygentoo/oberon-risc-emu-rs>
+
+## License
+
+ISC, matching upstream — see [`LICENSE`](LICENSE). The emulator derives from Peter
+De Wachter's `oberon-risc-emu` (© 2014, ISC); the bundled disk image and the
+vendored C reference are used under the same terms.
 
 [c]: https://github.com/pdewacht/oberon-risc-emu
 [rs]: https://github.com/zxygentoo/oberon-risc-emu-rs

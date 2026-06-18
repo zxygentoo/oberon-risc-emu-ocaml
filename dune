@@ -3,6 +3,7 @@
 ; are inlined into the CPU hot loop. The stock, non-flambda compiler only inlines
 ; across modules under -inline, and these functions sit well under the cost
 ; threshold; 100 is enough (higher only bloats the varied boot path). ~+8% boot.
+
 (env
  (release
   (ocamlopt_flags
