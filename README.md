@@ -11,16 +11,18 @@ individual instructions (see [Verifying correctness](#verifying-correctness)).
 
 ## Requirements
 
-OCaml ≥ 4.08, dune ≥ 3, a C compiler, and the SDL2 system library. Install the
-OCaml dependencies with opam:
+OCaml ≥ 4.08, dune ≥ 3, a C compiler, and the SDL2 system library. SDL2 comes
+from your OS package manager (e.g. `apt install libsdl2-dev`,
+`brew install sdl2`); the OCaml dependencies come from opam:
 
 ```sh
-opam install dune tsdl qcheck-core
+opam install . --deps-only --with-test
 ```
 
-`tsdl` binds SDL2; `qcheck-core` drives the property tests. The C compiler
-(already needed by `tsdl`) also builds the vendored C reference for the `@cosim`
-tests.
+This reads `oberon-risc-emu.opam` (generated from `dune-project`) and pulls in
+`tsdl` — which binds SDL2 — plus `qcheck-core`, which drives the property tests.
+The C compiler (already needed by `tsdl`) also builds the vendored C reference
+for the `@cosim` tests.
 
 ## Build & run
 
