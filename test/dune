@@ -19,6 +19,13 @@
  (names test_ps2 test_cli test_scale)
  (libraries oberon_frontend tsdl))
 
+; Instruction-codec tests (QCheck) — the shared Risc5_isa encode/decode + the
+; differential check of encode against the hand-rolled golden encoders.
+
+(test
+ (name test_risc5_isa)
+ (libraries risc_core qcheck-core qcheck-core.runner))
+
 ; Property-based tests (QCheck) — spans the core and frontend.
 
 (test

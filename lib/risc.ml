@@ -20,80 +20,12 @@ let rom_start = 0xFFFF_F800
 let rom_words = 512
 let io_start = 0xFFFF_FFC0
 
-(* Instruction-class selector bits in the top nibble of every instruction. *)
-let pbit = 0x8000_0000
-let qbit = 0x4000_0000
-let ubit = 0x2000_0000
-let vbit = 0x1000_0000
-
 (* The four ALU status flags, packed [Z | N<<1 | C<<2 | V<<3] to match the
    [cpu_state] / cosim packing. *)
 let flag_z = 1
 let flag_n = 2
 let flag_c = 4
 let flag_v = 8
-
-(* A register-instruction opcode: the 4-bit [op] field, in opcode order. *)
-type op =
-  | Mov
-  | Lsl
-  | Asr
-  | Ror
-  | And
-  | Ann
-  | Ior
-  | Xor
-  | Add
-  | Sub
-  | Mul
-  | Div
-  | Fad
-  | Fsb
-  | Fml
-  | Fdv
-
-(* Decode the 4-bit opcode field [(ir lsr 16) land 0xF]; all 16 values map. *)
-let op_of_int = function
-  | 0 -> Mov
-  | 1 -> Lsl
-  | 2 -> Asr
-  | 3 -> Ror
-  | 4 -> And
-  | 5 -> Ann
-  | 6 -> Ior
-  | 7 -> Xor
-  | 8 -> Add
-  | 9 -> Sub
-  | 10 -> Mul
-  | 11 -> Div
-  | 12 -> Fad
-  | 13 -> Fsb
-  | 14 -> Fml
-  | _ -> Fdv
-;;
-
-(* A branch condition: the 3-bit [cc] field, under its ISA mnemonic. *)
-type cond =
-  | Mi (* negative *)
-  | Eq (* zero *)
-  | Cs (* carry set *)
-  | Vs (* overflow *)
-  | Ls (* lower or same (C | Z) *)
-  | Lt (* less than (N <> V) *)
-  | Le (* less or equal ((N <> V) | Z) *)
-  | True (* always *)
-
-(* Decode the 3-bit condition field [(ir lsr 24) land 7]; all 8 values map. *)
-let cond_of_int = function
-  | 0 -> Mi
-  | 1 -> Eq
-  | 2 -> Cs
-  | 3 -> Vs
-  | 4 -> Ls
-  | 5 -> Lt
-  | 6 -> Le
-  | _ -> True
-;;
 
 (** A damaged (dirty) rectangle of the framebuffer, in framebuffer-word columns
     and line rows. [y1 > y2] means "nothing damaged". *)
@@ -275,6 +207,7 @@ let set_register t reg value =
 
 (* Whether the (un-negated) condition [cc] holds for the current flags. *)
 let cond_holds t cc =
+  let open Risc5_isa in
   let n = has t flag_n
   and z = has t flag_z
   and c = has t flag_c
@@ -302,30 +235,26 @@ let single_step t =
   else (
     let ir = if in_ram then t.ram.(t.pc) else t.rom.(t.pc - (rom_start / 4)) in
     t.pc <- U32.wrap (t.pc + 1);
-    if ir land pbit = 0
-    then (
-      (* Register instructions. *)
-      let a = (ir land 0x0F00_0000) lsr 24 in
-      let b = (ir land 0x00F0_0000) lsr 20 in
-      let op = op_of_int ((ir land 0x000F_0000) lsr 16) in
-      let im = ir land 0x0000_FFFF in
-      let c = ir land 0x0000_000F in
+    (* Decode via the shared {!Risc5_isa} accessors ([@inline], allocation-free);
+       the execute logic below is byte-for-byte the original. The [kind] match
+       mirrors {!Risc5_isa.decode}; on a non-flambda build it costs a few % on the
+       hot path versus a raw p/q branch tree — immaterial for the emulator, and
+       free under flambda2. *)
+    let open Risc5_isa in
+    match kind ir with
+    | Register ->
+      let a = ra ir
+      and b = rb ir in
       let b_val = t.r.(b) in
-      let c_val =
-        if ir land qbit = 0
-        then t.r.(c)
-        else if ir land vbit = 0
-        then im
-        else 0xFFFF_0000 lor im
-      in
+      let c_val = if q ir then imm_value ir else t.r.(rc ir) in
       let a_val =
-        match op with
+        match op_of_word ir with
         | Mov ->
-          if ir land ubit = 0
+          if not (u ir)
           then c_val
-          else if ir land qbit <> 0
+          else if q ir
           then U32.shl c_val 16
-          else if ir land vbit <> 0
+          else if v ir
           then
             (* Reading the flags: the low byte is the hardware's CPU-id byte
                0x53. RISC5.v:113 reads {N, Z, C, OV, 20'b0, 8'h53}; the C
@@ -347,23 +276,19 @@ let single_step t =
         | Xor -> b_val lxor c_val
         | Add ->
           let s = U32.add b_val c_val in
-          let s =
-            if ir land ubit <> 0 then U32.add s (Bool.to_int (has t flag_c)) else s
-          in
+          let s = if u ir then U32.add s (Bool.to_int (has t flag_c)) else s in
           set_flag t flag_c (s < b_val);
           set_flag t flag_v ((s lxor c_val land (s lxor b_val)) lsr 31 <> 0);
           s
         | Sub ->
           let s = U32.sub b_val c_val in
-          let s =
-            if ir land ubit <> 0 then U32.sub s (Bool.to_int (has t flag_c)) else s
-          in
+          let s = if u ir then U32.sub s (Bool.to_int (has t flag_c)) else s in
           set_flag t flag_c (s > b_val);
           set_flag t flag_v ((b_val lxor c_val land (s lxor b_val)) lsr 31 <> 0);
           s
         | Mul ->
           let tmp =
-            if ir land ubit = 0
+            if not (u ir)
             then
               Int64.mul
                 (Int64.of_int (U32.to_i32 b_val))
@@ -378,71 +303,58 @@ let single_step t =
         | Div ->
           if U32.to_i32 c_val > 0
           then
-            if ir land ubit = 0
+            if not (u ir)
             then (
               let bi = U32.to_i32 b_val
               and ci = U32.to_i32 c_val in
-              let q = U32.wrap (bi / ci)
+              let quot = U32.wrap (bi / ci)
               and r = U32.wrap (bi mod ci) in
               (* Floor toward negative infinity when the remainder is negative. *)
               if U32.to_i32 r < 0
               then (
                 t.h <- U32.add r c_val;
-                U32.sub q 1)
+                U32.sub quot 1)
               else (
                 t.h <- r;
-                q))
+                quot))
             else (
               t.h <- b_val mod c_val;
               b_val / c_val)
           else (
-            let { Fp.quot; rem } = Fp.idiv b_val c_val (ir land ubit <> 0) in
+            let { Fp.quot; rem } = Fp.idiv b_val c_val (u ir) in
             t.h <- rem;
             quot)
-        | Fad -> Fp.fp_add b_val c_val (ir land ubit <> 0) (ir land vbit <> 0)
-        | Fsb ->
-          Fp.fp_add b_val (c_val lxor 0x8000_0000) (ir land ubit <> 0) (ir land vbit <> 0)
+        | Fad -> Fp.fp_add b_val c_val (u ir) (v ir)
+        | Fsb -> Fp.fp_add b_val (c_val lxor 0x8000_0000) (u ir) (v ir)
         | Fml -> Fp.fp_mul b_val c_val
         | Fdv -> Fp.fp_div b_val c_val
       in
-      set_register t a a_val)
-    else if ir land qbit = 0
-    then (
-      (* Memory instructions. *)
-      let a = (ir land 0x0F00_0000) lsr 24 in
-      let b = (ir land 0x00F0_0000) lsr 20 in
-      let off = ir land 0x000F_FFFF in
-      let off = (off lxor 0x0008_0000) - 0x0008_0000 in
-      (* sign-extend 20-bit *)
-      let address = U32.add t.r.(b) off in
-      if ir land ubit = 0
+      set_register t a a_val
+    | Memory ->
+      let a = ra ir
+      and b = rb ir in
+      let address = U32.add t.r.(b) (off20 ir) in
+      if not (u ir)
       then (
-        let a_val =
-          if ir land vbit = 0 then load_word t address else load_byte t address
-        in
+        let a_val = if v ir then load_byte t address else load_word t address in
         set_register t a a_val)
-      else if ir land vbit = 0
+      else if not (v ir)
       then store_word t address t.r.(a)
-      else store_byte t address (t.r.(a) land 0xFF))
-    else (
-      (* Branch instructions. Bit 27 negates the condition. *)
-      let negate = (ir lsr 27) land 1 <> 0 in
-      let taken = negate <> cond_holds t (cond_of_int ((ir lsr 24) land 7)) in
+      else store_byte t address (t.r.(a) land 0xFF)
+    | Branch ->
+      (* Bit 27 negates the condition. *)
+      let taken = cond_neg ir <> cond_holds t (cond_of_word ir) in
       if taken
       then (
-        if ir land vbit <> 0
+        if v ir
         then
           (* The link register holds the return point as a byte address. *)
           set_register t 15 (U32.wrap (t.pc * 4));
-        if ir land ubit = 0
+        if not (u ir)
         then
           (* Register-indirect: the register holds a byte address. *)
-          t.pc <- t.r.(ir land 0x0000_000F) / 4
-        else (
-          let off = ir land 0x00FF_FFFF in
-          let off = (off lxor 0x0080_0000) - 0x0080_0000 in
-          (* sign-extend 24-bit *)
-          t.pc <- U32.add t.pc off))))
+          t.pc <- t.r.(rc ir) / 4
+        else t.pc <- U32.add t.pc (off24 ir)))
 ;;
 
 (** Run up to [cycles] instructions, stopping early when the CPU is detected
