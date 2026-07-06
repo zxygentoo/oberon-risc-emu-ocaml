@@ -118,9 +118,7 @@ let[@inline] p w = w land pbit <> 0
 let[@inline] q w = w land qbit <> 0
 let[@inline] u w = w land ubit <> 0
 let[@inline] v w = w land vbit <> 0
-
 let[@inline] kind w = if not (p w) then Register else if not (q w) then Memory else Branch
-
 let[@inline] ra w = (w lsr 24) land 0xF
 let[@inline] rb w = (w lsr 20) land 0xF
 let[@inline] rc w = w land 0xF
@@ -169,9 +167,24 @@ type instr =
       ; b : reg
       ; operand : operand
       }
-  | Load of { size : size; a : reg; base : reg; off : int }
-  | Store of { size : size; a : reg; base : reg; off : int }
-  | Branch of { cond : cond; neg : bool; link : bool; target : target }
+  | Load of
+      { size : size
+      ; a : reg
+      ; base : reg
+      ; off : int
+      }
+  | Store of
+      { size : size
+      ; a : reg
+      ; base : reg
+      ; off : int
+      }
+  | Branch of
+      { cond : cond
+      ; neg : bool
+      ; link : bool
+      ; target : target
+      }
 
 let encode = function
   | Alu { op; u; v; a; b; operand } ->
@@ -203,7 +216,9 @@ let decode w =
     Alu { op = op_of_word w; u = u w; v = v w; a = ra w; b = rb w; operand }
   | Memory ->
     let size = if v w then B else W in
-    let a = ra w and base = rb w and off = off20 w in
+    let a = ra w
+    and base = rb w
+    and off = off20 w in
     if u w then Store { size; a; base; off } else Load { size; a; base; off }
   | Branch ->
     let target = if u w then To_off (off24 w) else To_reg (rc w) in

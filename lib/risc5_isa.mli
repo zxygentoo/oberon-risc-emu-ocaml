@@ -128,9 +128,26 @@ type instr =
       ; b : reg
       ; operand : operand
       }
-  | Load of { size : size; a : reg; base : reg; off : int } (* u = 0 *)
-  | Store of { size : size; a : reg; base : reg; off : int } (* u = 1 *)
-  | Branch of { cond : cond; neg : bool; link : bool; target : target }
+  | Load of
+      { size : size
+      ; a : reg
+      ; base : reg
+      ; off : int
+      }
+    (* u = 0 *)
+  | Store of
+      { size : size
+      ; a : reg
+      ; base : reg
+      ; off : int
+      }
+    (* u = 1 *)
+  | Branch of
+      { cond : cond
+      ; neg : bool
+      ; link : bool
+      ; target : target
+      }
 
 val encode : instr -> word
 val decode : word -> instr
