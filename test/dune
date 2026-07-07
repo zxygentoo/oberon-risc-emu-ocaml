@@ -4,6 +4,7 @@
 (tests
  (names
   test_risc
+  test_himem
   test_pclink
   test_clipboard
   test_disk

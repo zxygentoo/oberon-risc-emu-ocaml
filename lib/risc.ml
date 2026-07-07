@@ -1,9 +1,17 @@
 (** The RISC5 CPU core, memory map, and public API (port of [risc.c] / [risc.rs]).
 
-    The memory layout differs slightly from the FPGA: the FPGA uses a 20-bit
-    address bus and ignores the top 12 bits, while we use all 32 bits so the
-    emulator can offer more than 1 MB of RAM. In the default configuration the
-    emulator is bit-compatible with the FPGA system.
+    The memory layout differs slightly from the reference FPGA: the FPGA uses a
+    20-bit address bus and ignores the top 12 bits, while we use all 32 bits so
+    the emulator can offer more RAM. The default machine carries 16 MiB with
+    the boot ROM (and so the kernel's MemLim/stackOrg worldview) and the
+    framebuffer window unchanged from the historical 1 MB configuration: stock
+    disk images behave bit-identically, and the RAM above 1 MB is simply
+    addressable — like a board whose memory chip is larger than the OS is
+    configured to use. (The one observable divergence: an address above 1 MB
+    reaches real RAM here, where the 20-bit FPGA would alias it into the low
+    megabyte; no stock software emits such addresses.) {!configure_memory}
+    remains the knob that makes {e Oberon itself} use more memory — it patches
+    the boot ROM.
 
     Words are stored as native [int]s in [u32] range; see {!U32} for the exact
     32-bit arithmetic this relies on. *)
@@ -14,8 +22,13 @@ let framebuffer_width = 1024
 (** Standard framebuffer height in pixels. *)
 let framebuffer_height = 768
 
-let default_mem_size = 0x0010_0000
+let default_mem_size = 0x0100_0000
 let default_display_start = 0x000E_7F00
+
+(* Top of the framebuffer's damage-tracked window. Historically RAM ended here
+   (1 MB) with the framebuffer as its top slice; RAM now extends past it, so
+   the window's end is its own bound rather than [mem_size]. *)
+let default_display_end = 0x0010_0000
 let rom_start = 0xFFFF_F800
 let rom_words = 512
 let io_start = 0xFFFF_FFC0
@@ -53,6 +66,7 @@ type t =
   ; mutable flags : int
   ; mutable mem_size : int
   ; mutable display_start : int
+  ; mutable display_end : int
   ; mutable progress : int
   ; mutable current_tick : int
   ; mutable mouse : int
@@ -180,10 +194,12 @@ let update_damage t w =
 let store_word t addr value =
   if addr < t.display_start
   then t.ram.(addr / 4) <- value
-  else if addr < t.mem_size
+  else if addr < t.display_end
   then (
     t.ram.(addr / 4) <- value;
     update_damage t ((addr / 4) - (t.display_start / 4)))
+  else if addr < t.mem_size
+  then t.ram.(addr / 4) <- value
   else store_io t addr value
 ;;
 
@@ -386,6 +402,7 @@ let make () =
     ; flags = 0
     ; mem_size = default_mem_size
     ; display_start = default_display_start
+    ; display_end = default_display_end
     ; progress = 0
     ; current_tick = 0
     ; mouse = 0
@@ -419,6 +436,8 @@ let configure_memory t megabytes_ram screen_width screen_height =
   let screen_height = clamp 32 4096 screen_height in
   t.display_start <- megs lsl 20;
   t.mem_size <- t.display_start + (screen_width * screen_height / 8);
+  (* In this configuration the framebuffer is again RAM's top slice. *)
+  t.display_end <- t.mem_size;
   t.fb_width <- screen_width / 32;
   t.fb_height <- screen_height;
   t.damage.x1 <- 0;

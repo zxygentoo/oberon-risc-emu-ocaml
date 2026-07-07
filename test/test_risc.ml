@@ -331,8 +331,8 @@ let () =
   eqx "cfg_w_round" (Risc.fb_width r) (992 / 32);
   (* ---- Branched-into-the-void resets to the boot ROM ---- *)
   let r = cpu () in
-  F.set_pc r 0x8_0000;
-  (* past RAM, below ROM *)
+  F.set_pc r 0x80_0000;
+  (* past the 16 MiB RAM, below ROM *)
   F.single_step r;
   eqx "void_reset" (F.pc r) (0xFFFF_F800 / 4);
   (* ---- Store to the display marks framebuffer damage ---- *)

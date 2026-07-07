@@ -1,7 +1,10 @@
 (** The RISC5 CPU core, memory map, and public API (port of [risc.c]).
 
-    The machine is bit-compatible with the FPGA system in the default
-    configuration. Words are machine integers in [u32] range (see {!U32}). *)
+    The default machine carries 16 MiB of RAM but is bit-compatible with the
+    reference FPGA system for all software that stays within the 1 MB the boot
+    ROM advertises (all stock disk images do); see {!Risc_core.Risc} for the
+    memory-map details. Words are machine integers in [u32] range (see
+    {!U32}). *)
 
 (** Standard framebuffer width in pixels (overridable via {!configure_memory}). *)
 val framebuffer_width : int
