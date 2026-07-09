@@ -1,10 +1,9 @@
 (** The RISC5 CPU core, memory map, and public API (port of [risc.c]).
 
-    The default machine carries 16 MiB of RAM but is bit-compatible with the
-    reference FPGA system for all software that stays within the 1 MB the boot
-    ROM advertises (all stock disk images do); see {!Risc_core.Risc} for the
-    memory-map details. Words are machine integers in [u32] range (see
-    {!U32}). *)
+    The default machine carries 16 MiB of RAM but is bit-compatible with the reference
+    FPGA system for all software that stays within the 1 MB the boot ROM advertises (all
+    stock disk images do); see {!Risc_core.Risc} for the memory-map details. Words are
+    machine integers in [u32] range (see {!U32}). *)
 
 (** Standard framebuffer width in pixels (overridable via {!configure_memory}). *)
 val framebuffer_width : int
@@ -12,8 +11,8 @@ val framebuffer_width : int
 (** Standard framebuffer height in pixels. *)
 val framebuffer_height : int
 
-(** A damaged (dirty) rectangle of the framebuffer, in framebuffer-word columns
-    and line rows. [y1 > y2] means "nothing damaged". *)
+(** A damaged (dirty) rectangle of the framebuffer, in framebuffer-word columns and line
+    rows. [y1 > y2] means "nothing damaged". *)
 type damage =
   { mutable x1 : int
   ; mutable x2 : int
@@ -21,8 +20,8 @@ type damage =
   ; mutable y2 : int
   }
 
-(** A snapshot of the architectural CPU state, for inspection and differential
-    testing (mirrors the C cosim [dump_state]). *)
+(** A snapshot of the architectural CPU state, for inspection and differential testing
+    (mirrors the C cosim [dump_state]). *)
 type cpu_state =
   { pc : int
   ; r : int array
@@ -33,21 +32,20 @@ type cpu_state =
 (** The RISC5 machine: CPU registers, RAM/ROM, and attached devices. *)
 type t
 
-(** Build a machine in the default (FPGA-compatible) configuration and reset it.
-    Port of [risc_new]. *)
+(** Build a machine in the default (FPGA-compatible) configuration and reset it. Port of
+    [risc_new]. *)
 val make : unit -> t
 
-(** [configure_memory t megabytes_ram screen_width screen_height] resizes RAM and
-    the framebuffer, patching the boot ROM. RAM clamps to 1..32 MB, each screen
-    axis to 32..4096 (width rounded down to a 32-pixel multiple). Port of
-    [risc_configure_memory]. *)
+(** [configure_memory t megabytes_ram screen_width screen_height] resizes RAM and the
+    framebuffer, patching the boot ROM. RAM clamps to 1..32 MB, each screen axis to
+    32..4096 (width rounded down to a 32-pixel multiple). Port of [risc_configure_memory]. *)
 val configure_memory : t -> int -> int -> int -> unit
 
 (** Reset: jump to the boot ROM. Port of [risc_reset]. *)
 val reset : t -> unit
 
-(** Run up to [cycles] instructions, stopping early when the CPU is detected
-    idle-spinning on the ms-counter or keyboard-ready bit. Port of [risc_run]. *)
+(** Run up to [cycles] instructions, stopping early when the CPU is detected idle-spinning
+    on the ms-counter or keyboard-ready bit. Port of [risc_run]. *)
 val run : t -> int -> unit
 
 (** {2 Device attachment}
@@ -75,16 +73,14 @@ val set_switches : t -> int -> unit
 (** Set the synthetic millisecond clock. Port of [risc_set_time]. *)
 val set_time : t -> int -> unit
 
-(** Report a mouse move (coordinates in the Oberon frame). Port of
-    [risc_mouse_moved]. *)
+(** Report a mouse move (coordinates in the Oberon frame). Port of [risc_mouse_moved]. *)
 val mouse_moved : t -> int -> int -> unit
 
-(** Report a mouse button (1=left, 2=middle, 3=right). Port of
-    [risc_mouse_button]. *)
+(** Report a mouse button (1=left, 2=middle, 3=right). Port of [risc_mouse_button]. *)
 val mouse_button : t -> int -> bool -> unit
 
-(** Enqueue PS/2 scancodes for the keyboard (dropped if the buffer is full). Port
-    of [risc_keyboard_input]. *)
+(** Enqueue PS/2 scancodes for the keyboard (dropped if the buffer is full). Port of
+    [risc_keyboard_input]. *)
 val keyboard_input : t -> bytes -> unit
 
 (** The framebuffer word at index [i] from the display start. *)
@@ -103,9 +99,33 @@ val fb_height : t -> int
 (** Snapshot the architectural CPU state (for inspection / differential testing). *)
 val cpu_state : t -> cpu_state
 
-(** White-box access used by the test suite only — {b not} part of the stable
-    API. These reach into machine internals the public interface deliberately
-    hides (single-stepping, raw MMIO, the register/RAM/flag state). *)
+(** Headless "shim" execution mode: the CPU's second mode, in which the whole MMIO region
+    routes to a host backend ({!Io.shim}) and the machine boots an inner-core image
+    instead of the boot ROM. Drives the image-build toolchain (see {!Shim}). {b Not} part
+    of the stable API. *)
+module For_shim : sig
+  (** Reconfigure as a flat [mem_bytes]-RAM machine with no framebuffer window (every
+      below-[mem_bytes] access is plain RAM; MMIO stays at the top). Call before
+      {!boot_inner_core}. Port of [configure_shim]. *)
+  val configure_shim : t -> int -> unit
+
+  (** Attach the shim host backend; while set, the MMIO region routes to it. *)
+  val set_shim : t -> Io.shim -> unit
+
+  (** Load an inner-core image (little-endian [(len, addr, bytes)] records terminated by
+      [len = 0]) into RAM and set up the boot registers. Raises [Failure] on a truncated
+      image or a record that falls outside RAM. *)
+  val boot_inner_core : t -> string -> int -> unit
+
+  (** Run in shim mode until the host halts, returning the guest exit code. Requires
+      {!set_shim} and {!boot_inner_core}. Set [OBERON_TRACE] in the environment to dump a
+      trace on an abnormal exit. *)
+  val shim_run : t -> int
+end
+
+(** White-box access used by the test suite only — {b not} part of the stable API. These
+    reach into machine internals the public interface deliberately hides (single-stepping,
+    raw MMIO, the register/RAM/flag state). *)
 module For_tests : sig
   val io_start : int
   val single_step : t -> unit

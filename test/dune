@@ -38,3 +38,29 @@
   unix
   qcheck-core
   qcheck-core.runner))
+
+; Host-tool tests (oberon_tools): converters, .packonly, FS reader, resolver.
+
+(tests
+ (names test_convert test_packonly test_image test_resolve)
+ (libraries oberon_tools))
+
+; Pipeline filesystem-helper tests (need unix for mkdir/getpid).
+
+(test
+ (name test_pipeline)
+ (libraries oberon_tools unix))
+
+; Shim ABI unit tests.
+
+(test
+ (name test_shim)
+ (libraries risc_core))
+
+; End-to-end image-builder round-trip (opt-in: self-skips unless OBERON_ROUNDTRIP
+; is set, since it boots the shim and compiles the whole system).
+
+(test
+ (name test_build_roundtrip)
+ (libraries oberon_tools unix)
+ (deps ../DiskImage/Oberon-2020-08-18.dsk))

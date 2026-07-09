@@ -1,20 +1,18 @@
 (** The RISC5 CPU core, memory map, and public API (port of [risc.c] / [risc.rs]).
 
-    The memory layout differs slightly from the reference FPGA: the FPGA uses a
-    20-bit address bus and ignores the top 12 bits, while we use all 32 bits so
-    the emulator can offer more RAM. The default machine carries 16 MiB with
-    the boot ROM (and so the kernel's MemLim/stackOrg worldview) and the
-    framebuffer window unchanged from the historical 1 MB configuration: stock
-    disk images behave bit-identically, and the RAM above 1 MB is simply
-    addressable — like a board whose memory chip is larger than the OS is
-    configured to use. (The one observable divergence: an address above 1 MB
-    reaches real RAM here, where the 20-bit FPGA would alias it into the low
-    megabyte; no stock software emits such addresses.) {!configure_memory}
-    remains the knob that makes {e Oberon itself} use more memory — it patches
-    the boot ROM.
+    The memory layout differs slightly from the reference FPGA: the FPGA uses a 20-bit
+    address bus and ignores the top 12 bits, while we use all 32 bits so the emulator can
+    offer more RAM. The default machine carries 16 MiB with the boot ROM (and so the
+    kernel's MemLim/stackOrg worldview) and the framebuffer window unchanged from the
+    historical 1 MB configuration: stock disk images behave bit-identically, and the RAM
+    above 1 MB is simply addressable — like a board whose memory chip is larger than the
+    OS is configured to use. (The one observable divergence: an address above 1 MB reaches
+    real RAM here, where the 20-bit FPGA would alias it into the low megabyte; no stock
+    software emits such addresses.) {!configure_memory} remains the knob that makes
+    {e Oberon itself} use more memory — it patches the boot ROM.
 
-    Words are stored as native [int]s in [u32] range; see {!U32} for the exact
-    32-bit arithmetic this relies on. *)
+    Words are stored as native [int]s in [u32] range; see {!U32} for the exact 32-bit
+    arithmetic this relies on. *)
 
 (** Standard framebuffer width in pixels (overridable via {!configure_memory}). *)
 let framebuffer_width = 1024
@@ -25,23 +23,23 @@ let framebuffer_height = 768
 let default_mem_size = 0x0100_0000
 let default_display_start = 0x000E_7F00
 
-(* Top of the framebuffer's damage-tracked window. Historically RAM ended here
-   (1 MB) with the framebuffer as its top slice; RAM now extends past it, so
-   the window's end is its own bound rather than [mem_size]. *)
+(* Top of the framebuffer's damage-tracked window. Historically RAM ended here (1 MB) with
+   the framebuffer as its top slice; RAM now extends past it, so the window's end is its
+   own bound rather than [mem_size]. *)
 let default_display_end = 0x0010_0000
 let rom_start = 0xFFFF_F800
 let rom_words = 512
 let io_start = 0xFFFF_FFC0
 
-(* The four ALU status flags, packed [Z | N<<1 | C<<2 | V<<3] to match the
-   [cpu_state] / cosim packing. *)
+(* The four ALU status flags, packed [Z | N<<1 | C<<2 | V<<3] to match the [cpu_state] /
+   cosim packing. *)
 let flag_z = 1
 let flag_n = 2
 let flag_c = 4
 let flag_v = 8
 
-(** A damaged (dirty) rectangle of the framebuffer, in framebuffer-word columns
-    and line rows. [y1 > y2] means "nothing damaged". *)
+(** A damaged (dirty) rectangle of the framebuffer, in framebuffer-word columns and line
+    rows. [y1 > y2] means "nothing damaged". *)
 type damage =
   { mutable x1 : int
   ; mutable x2 : int
@@ -49,8 +47,8 @@ type damage =
   ; mutable y2 : int
   }
 
-(** A snapshot of the architectural CPU state, for inspection and differential
-    testing (mirrors the C cosim [dump_state]). *)
+(** A snapshot of the architectural CPU state, for inspection and differential testing
+    (mirrors the C cosim [dump_state]). *)
 type cpu_state =
   { pc : int
   ; r : int array
@@ -78,6 +76,7 @@ type t =
   ; mutable spi_selected : int
   ; spi : Io.spi option array (* 4 *)
   ; mutable clipboard : Io.clipboard option
+  ; mutable shim : Io.shim option (* headless shim host, when in shim mode *)
   ; mutable fb_width : int (* words *)
   ; mutable fb_height : int (* lines *)
   ; damage : damage
@@ -97,7 +96,7 @@ let reset t = t.pc <- rom_start / 4
 (* ---- MMIO ---------------------------------------------------------------- *)
 
 (* Keep each offset's logic in its own arm, mirroring the C's switch. *)
-let load_io t address =
+let load_io_device t address =
   match U32.sub address io_start with
   | 0 ->
     (* Millisecond counter. *)
@@ -144,7 +143,16 @@ let load_io t address =
   | _ -> 0
 ;;
 
-let store_io t address value =
+(* Shim mode routes the whole MMIO region to the host backend; otherwise the FPGA device
+   map above. A load never reaches into guest memory — only a store can, via a syscall
+   (see [store_io]). *)
+let load_io t address =
+  match t.shim with
+  | Some s -> s.Io.shim_load (U32.sub address io_start)
+  | None -> load_io_device t address
+;;
+
+let store_io_device t address value =
   match U32.sub address io_start with
   | 4 ->
     (match t.leds with
@@ -169,6 +177,14 @@ let store_io t address value =
      | Some c -> c.clip_write_data value
      | None -> ())
   | _ -> ()
+;;
+
+(* Shim mode: a store can trigger a syscall that reaches into guest RAM, so hand the host
+   the [ram] array; otherwise the FPGA device map above. *)
+let store_io t address value =
+  match t.shim with
+  | Some s -> s.Io.shim_store (U32.sub address io_start) value t.ram
+  | None -> store_io_device t address value
 ;;
 
 (* ---- Memory -------------------------------------------------------------- *)
@@ -251,11 +267,10 @@ let single_step t =
   else (
     let ir = if in_ram then t.ram.(t.pc) else t.rom.(t.pc - (rom_start / 4)) in
     t.pc <- U32.wrap (t.pc + 1);
-    (* Decode via the shared {!Risc5_isa} accessors ([@inline], allocation-free);
-       the execute logic below is byte-for-byte the original. The [kind] match
-       mirrors {!Risc5_isa.decode}; on a non-flambda build it costs a few % on the
-       hot path versus a raw p/q branch tree — immaterial for the emulator, and
-       free under flambda2. *)
+    (* Decode via the shared {!Risc5_isa} accessors ([@inline], allocation-free); the
+       execute logic below is byte-for-byte the original. The [kind] match mirrors
+       {!Risc5_isa.decode}; on a non-flambda build it costs a few % on the hot path versus
+       a raw p/q branch tree — immaterial for the emulator, and free under flambda2. *)
     let open Risc5_isa in
     match kind ir with
     | Register ->
@@ -272,10 +287,9 @@ let single_step t =
           then U32.shl c_val 16
           else if v ir
           then
-            (* Reading the flags: the low byte is the hardware's CPU-id byte
-               0x53. RISC5.v:113 reads {N, Z, C, OV, 20'b0, 8'h53}; the C
-               reference emits 0xD0 instead. We follow the hardware and the
-               Rust port; see
+            (* Reading the flags: the low byte is the hardware's CPU-id byte 0x53.
+               RISC5.v:113 reads [{N, Z, C, OV, 20'b0, 8'h53}]; the C reference emits 0xD0
+               instead. We follow the hardware and the Rust port; see
                https://github.com/zxygentoo/oberon-risc-emu-rs/blob/main/DIVERGENCES.md *)
             0x53
             lor (Bool.to_int (has t flag_n) lsl 31)
@@ -373,11 +387,11 @@ let single_step t =
         else t.pc <- U32.add t.pc (off24 ir)))
 ;;
 
-(** Run up to [cycles] instructions, stopping early when the CPU is detected
-    idle-spinning on the ms-counter or keyboard-ready bit. Port of [risc_run]. *)
+(** Run up to [cycles] instructions, stopping early when the CPU is detected idle-spinning
+    on the ms-counter or keyboard-ready bit. Port of [risc_run]. *)
 let run t cycles =
-  (* [progress] lets us pause emulation until the next frame when the CPU is
-     busy-waiting on the millisecond counter or keyboard ready bit. *)
+  (* [progress] lets us pause emulation until the next frame when the CPU is busy-waiting
+     on the millisecond counter or keyboard ready bit. *)
   t.progress <- 20;
   let rec loop i =
     if i < cycles && t.progress <> 0
@@ -390,8 +404,8 @@ let run t cycles =
 
 (* ---- Construction / configuration ---------------------------------------- *)
 
-(** Build a machine in the default (FPGA-compatible) configuration and reset it.
-    Port of [risc_new]. *)
+(** Build a machine in the default (FPGA-compatible) configuration and reset it. Port of
+    [risc_new]. *)
 let make () =
   let fb_width = framebuffer_width / 32 in
   let fb_height = framebuffer_height in
@@ -414,6 +428,7 @@ let make () =
     ; spi_selected = 0
     ; spi = Array.make 4 None
     ; clipboard = None
+    ; shim = None
     ; fb_width
     ; fb_height
     ; damage = { x1 = 0; y1 = 0; x2 = fb_width - 1; y2 = fb_height - 1 }
@@ -428,8 +443,8 @@ let make () =
 let clamp lo hi v = if v < lo then lo else if v > hi then hi else v
 
 (** Resize RAM and the framebuffer, patching the boot ROM accordingly. Port of
-    [risc_configure_memory]. RAM clamps to 1..32 MB, the screen to 32..4096 on
-    each axis with the width rounded down to whole 32-pixel words. *)
+    [risc_configure_memory]. RAM clamps to 1..32 MB, the screen to 32..4096 on each axis
+    with the width rounded down to whole 32-pixel words. *)
 let configure_memory t megabytes_ram screen_width screen_height =
   let megs = clamp 1 32 megabytes_ram in
   let screen_width = clamp 32 4096 screen_width land lnot 31 in
@@ -451,8 +466,8 @@ let configure_memory t megabytes_ram screen_width screen_height =
   t.rom.(373) <- 0x4116_0000 + (mem_lim land 0x0000_FFFF);
   let stack_org = t.display_start / 2 in
   t.rom.(376) <- 0x6100_0000 + (stack_org lsr 16);
-  (* Inform the display driver of the framebuffer layout, at the default display
-     start, so our disk images still boot on the standard FPGA. *)
+  (* Inform the display driver of the framebuffer layout, at the default display start, so
+     our disk images still boot on the standard FPGA. *)
   let d = default_display_start / 4 in
   t.ram.(d) <- 0x5369_7A67;
   t.ram.(d + 1) <- screen_width;
@@ -477,8 +492,7 @@ let set_switches t switches = t.switches <- switches
 (** Set the synthetic millisecond clock. Port of [risc_set_time]. *)
 let set_time t tick = t.current_tick <- tick
 
-(** Report a mouse move (coordinates in the Oberon frame). Port of
-    [risc_mouse_moved]. *)
+(** Report a mouse move (coordinates in the Oberon frame). Port of [risc_mouse_moved]. *)
 let mouse_moved t mouse_x mouse_y =
   if mouse_x >= 0 && mouse_x < 4096
   then t.mouse <- t.mouse land lnot 0x0000_0FFF lor mouse_x;
@@ -486,8 +500,7 @@ let mouse_moved t mouse_x mouse_y =
   then t.mouse <- t.mouse land lnot 0x00FF_F000 lor (mouse_y lsl 12)
 ;;
 
-(** Report a mouse button (1=left, 2=middle, 3=right). Port of
-    [risc_mouse_button]. *)
+(** Report a mouse button (1=left, 2=middle, 3=right). Port of [risc_mouse_button]. *)
 let mouse_button t button down =
   if button >= 1 && button < 4
   then (
@@ -495,8 +508,8 @@ let mouse_button t button down =
     if down then t.mouse <- t.mouse lor bit else t.mouse <- t.mouse land lnot bit)
 ;;
 
-(** Enqueue PS/2 scancodes for the keyboard (dropped if the buffer is full).
-    Port of [risc_keyboard_input]. *)
+(** Enqueue PS/2 scancodes for the keyboard (dropped if the buffer is full). Port of
+    [risc_keyboard_input]. *)
 let keyboard_input t codes =
   let len = Bytes.length codes in
   if Bytes.length t.key_buf - t.key_cnt >= len
@@ -525,6 +538,143 @@ let fb_height t = t.fb_height
 
 (** Snapshot the architectural CPU state (for inspection / differential testing). *)
 let cpu_state t = { pc = t.pc; r = Array.copy t.r; h = t.h; flags = t.flags }
+
+(* ---- Headless shim mode -------------------------------------------------- *)
+
+(* The CPU's second execution mode: the whole MMIO region routes to a host backend
+   ({!Io.shim}) and the machine boots an inner-core image instead of the boot ROM. Port of
+   the pub(crate) hooks in [risc.rs] that [shim.rs] drives. *)
+module For_shim = struct
+  (* Flat [mem_bytes]-RAM machine with no framebuffer carve-out: every access below
+     [mem_bytes] is plain RAM, MMIO stays at the top. *)
+  let configure_shim t mem_bytes =
+    t.mem_size <- mem_bytes;
+    t.display_start <- mem_bytes;
+    t.display_end <- mem_bytes;
+    t.ram <- Array.make (mem_bytes / 4) 0
+  ;;
+
+  let set_shim t host = t.shim <- Some host
+
+  (* Load a sequence of little-endian [(len, addr, bytes[len])] records (terminated by
+     [len = 0]) into RAM, then set up the boot registers. *)
+  let boot_inner_core t image stack_org =
+    let n = String.length image in
+    let read_u32 at =
+      if at + 4 <= n
+      then
+        Some
+          (Char.code image.[at]
+           lor (Char.code image.[at + 1] lsl 8)
+           lor (Char.code image.[at + 2] lsl 16)
+           lor (Char.code image.[at + 3] lsl 24))
+      else None
+    in
+    let rec load p =
+      match read_u32 p with
+      | None -> failwith "inner core: truncated length"
+      | Some len ->
+        let p = p + 4 in
+        if len = 0
+        then ()
+        else (
+          match read_u32 p with
+          | None -> failwith "inner core: truncated address"
+          | Some adr ->
+            let p = p + 4 in
+            let stop = p + len in
+            if stop > n then failwith "inner core: truncated data";
+            if adr + len > t.mem_size
+            then
+              failwith
+                (Printf.sprintf
+                   "inner core record at 0x%X (+%d) exceeds %d bytes of RAM"
+                   adr
+                   len
+                   t.mem_size);
+            for i = 0 to len - 1 do
+              let a = adr + i in
+              let wi = a / 4 in
+              let shift = a mod 4 * 8 in
+              t.ram.(wi)
+              <- t.ram.(wi)
+                 land lnot (0xFF lsl shift)
+                 lor (Char.code image.[p + i] lsl shift)
+            done;
+            load stop)
+    in
+    load 0;
+    t.ram.(3) <- t.mem_size (* MEM[12]: memory limit *);
+    t.ram.(6) <- stack_org (* MEM[24]: stack origin *);
+    t.pc <- 0;
+    Array.fill t.r 0 16 0;
+    t.r.(12) <- 0x20;
+    t.r.(14) <- stack_org;
+    t.h <- 0;
+    t.flags <- 0
+  ;;
+
+  (* Run until the host halts (syscall / trap), guarded by a large instruction budget.
+     [OBERON_TRACE] dumps a ring of the last instructions + registers on an abnormal exit
+     — the inner-core bring-up aid. *)
+  let shim_run t =
+    let ring_size = 256 in
+    let trace = Sys.getenv_opt "OBERON_TRACE" <> None in
+    let ring = Array.make ring_size (0, 0) in
+    (* [steps] instructions traced so far; slot [steps mod ring_size] is the oldest. *)
+    let dump_trace steps =
+      let m = min steps ring_size in
+      Printf.eprintf "shim: %d instruction(s) executed; last %d (PC: IR):\n" steps m;
+      for k = 0 to m - 1 do
+        let pc, ir = ring.((steps - m + k) mod ring_size) in
+        Printf.eprintf "  %08X: %08X\n" pc ir
+      done;
+      for i = 0 to 15 do
+        Printf.eprintf "  R%-2d=%08X" i t.r.(i);
+        if i mod 4 = 3 then Printf.eprintf "\n"
+      done;
+      Printf.eprintf "  PC =%08X\n%!" (U32.wrap (t.pc * 4))
+    in
+    let exited () =
+      match t.shim with
+      | Some s -> s.Io.shim_exit_code ()
+      | None -> None
+    in
+    let rec loop budget steps =
+      match exited () with
+      | Some code -> code
+      | None ->
+        if t.pc >= t.mem_size / 4
+        then (
+          Printf.eprintf "shim: PC left RAM (0x%08X)\n%!" (U32.wrap (t.pc * 4));
+          if trace then dump_trace steps;
+          1)
+        else if budget = 0
+        then (
+          Printf.eprintf "shim: instruction budget exhausted\n%!";
+          if trace then dump_trace steps;
+          1)
+        else if trace
+        then (
+          let ir = t.ram.(t.pc) in
+          ring.(steps mod ring_size) <- U32.wrap (t.pc * 4), ir;
+          if ir = 0
+          then (
+            Printf.eprintf
+              "shim: executed zero instruction at 0x%08X (wild branch target)\n"
+              (U32.wrap (t.pc * 4));
+            dump_trace (steps + 1);
+            1)
+          else (
+            single_step t;
+            loop (budget - 1) (steps + 1)))
+        else (
+          single_step t;
+          loop (budget - 1) steps)
+    in
+    loop 64_000_000_000 0
+  ;;
+end
 
 (* White-box access for the test suite; see the interface. *)
 module For_tests = struct

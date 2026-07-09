@@ -1,0 +1,9 @@
+; The host-tool executables — thin CLIs over the oberon_tools library.
+;   ob2txt / txt2ob   - Oberon <-> host text converters (no emulator)
+;   extract-source    - extract a build-ready source tree from a .dsk image
+;   build-po-image    - compile Project Oberon 2013 into a bootable .dsk
+;   build-eo-image    - the Extended Oberon counterpart
+
+(executables
+ (names ob2txt txt2ob extract_source build_po_image build_eo_image)
+ (libraries oberon_tools unix))
