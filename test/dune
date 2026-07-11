@@ -63,4 +63,5 @@
 (test
  (name test_build_roundtrip)
  (libraries oberon_tools unix)
- (deps ../DiskImage/Oberon-2020-08-18.dsk))
+ (action
+  (run %{test} %{dep:../DiskImage/Oberon-2020-08-18.dsk})))
