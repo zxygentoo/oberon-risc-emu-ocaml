@@ -4,8 +4,8 @@
 
      dune exec --profile release bench/bench.exe
 
-   Cross-port comparison against the Rust binary is in bench/compare.sh, which
-   times the identical `--headless --frames` workload on both. *)
+   See bench/README.md, including how to compare against the Rust port by timing
+   the identical `--headless --frames` workload on both. *)
 
 open Risc_core
 

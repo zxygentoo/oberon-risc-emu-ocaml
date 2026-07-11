@@ -20,9 +20,10 @@ opam install . --deps-only --with-test
 ```
 
 This reads `oberon-risc-emu.opam` (generated from `dune-project`) and pulls in
-`tsdl` — which binds SDL2 — plus `qcheck-core`, which drives the property tests.
-The C compiler (already needed by `tsdl`) also builds the vendored C reference
-for the `@cosim` tests.
+`tsdl` — which binds SDL2 — plus `crunch`, which embeds the host tools' toolchain
+assets at build time, and `qcheck-core`, which drives the property tests. The C
+compiler (already needed by `tsdl`) also builds the vendored C reference for the
+`@cosim` tests.
 
 ## Build & run
 
@@ -64,6 +65,29 @@ the middle button. Keyboard shortcuts:
 | `F12`, or `Ctrl`+`Shift`+`Del` | Reset the machine |
 | `F11`, or `Alt`+`Enter` | Toggle full-screen |
 
+## Host tools
+
+The disk-image toolchain from the Rust workspace's `host-tools`, ported under
+`tools/`:
+
+```sh
+# unpack a build-ready source tree from an image (writes .packonly too):
+dune exec tools/bin/extract_source.exe -- DiskImage/Oberon-2020-08-18.dsk src/
+
+# compile the whole tree back into a bootable image:
+dune exec tools/bin/build_po_image.exe -- src/ Oberon.dsk
+
+# convert one file between Oberon (Latin-1/CR) and host (UTF-8/LF) text:
+dune exec tools/bin/ob2txt.exe -- src/Kernel.Mod    # -> src/Kernel.Mod.txt
+dune exec tools/bin/txt2ob.exe -- src/Kernel.Mod.txt
+```
+
+`build-po-image` (and `build-eo-image`, its Extended Oberon counterpart) drive
+the Oberon compiler headless through a port of project-norebo's shim runtime,
+with the bootstrap toolchain embedded in the binary. Both directions are
+verified byte-identical against the Rust tools: extracted trees compare equal,
+and built images hash identically.
+
 ## Verifying correctness
 
 ```sh
@@ -73,16 +97,22 @@ dune test
 runs the full suite — ~20,000 enumerated assertions (mostly FP vectors) plus
 thousands of randomized QCheck cases:
 
-- **boot golden** — boots the bundled image under a deterministic 60 Hz clock and
-  checks the framebuffer and CPU-state FNV-1a hashes against frozen values
-  (identical to the Rust reference).
+- **boot golden** — one continuous deterministic 60 Hz boot of the bundled image,
+  with the framebuffer and CPU-state FNV-1a hashes checked against the frozen
+  C/Rust values at 7 checkpoints (frames 1–250).
 - **FP vectors** — replays all 19,760 C-derived vectors through the software
   FP/idiv for bit-identical output.
-- **devices** — disk (SD/SPI), PCLink, clipboard, raw serial.
+- **devices** — disk (SD/SPI), PCLink, clipboard, raw serial, the shim file ABI.
 - **CPU & frontend** — instruction-level checks, MMIO, `configure_memory`, reset;
-  PS/2 encoding, CLI parsing, display scaling.
+  PS/2 encoding, CLI parsing, hotkeys, display scaling.
+- **host tools** — converters, `.packonly`, the FS reader/extractor, compile-order
+  resolution, the embedded seeds.
 - **property-based** (QCheck) — oracle-free laws: `U32` algebra, memory
   round-trips, the Z/N flag invariant, device round-trips, FP commutativity/sign.
+
+See [`test/README.md`](test/README.md) for the full tour, including the opt-in
+image-builder round-trip (`OBERON_ROUNDTRIP=1 dune runtest`) and how to
+reproduce a QCheck failure from its printed seed.
 
 ### Differential lockstep against the C reference
 
@@ -96,7 +126,7 @@ the FP routines on 400,000 random inputs; 200,000 single random instructions ove
 random state; and 5,000 bursts of 64 instructions compared after every step.
 Together they cover the whole decode/ALU/flag/branch space, including paths the
 boot never reaches. They need a C toolchain, so they are gated behind the `cosim`
-alias and kept out of `dune test`.
+alias and kept out of `dune test` (see [`test/README.md`](test/README.md)).
 
 The boot is deterministic, so you can also reproduce the golden hashes by hand —
 matching the Rust reference's `--headless --frames` output exactly:
@@ -126,9 +156,11 @@ dune exec bin/risc.exe -- --headless --frames 60 DiskImage/Oberon-2020-08-18.dsk
 ## Scope
 
 This port covers the emulator — the `risc_core` machine and the tsdl frontend —
-plus the differential-lockstep harness. Out of scope: the Rust workspace's
-`host-tools` (the `norebo` toolchain for building disk images from source), and
-full-boot lockstep (the deterministic boot-golden hash already pins that path).
+the differential-lockstep harness, and the Rust workspace's host tools: the text
+converters, the source extractor, and the two image builders with the headless
+shim runtime they drive (see [Host tools](#host-tools)). Out of scope: the Rust
+dev tools (`eo-driver`, `eo-inner-run`), and full-boot lockstep (the 7-checkpoint
+boot golden already pins that path against the C-derived hashes).
 
 ## Credits
 

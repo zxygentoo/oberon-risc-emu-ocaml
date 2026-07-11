@@ -8,7 +8,7 @@
      OBERON_ROUNDTRIP=1 dune exec test/test_build_roundtrip.exe DiskImage/Oberon-2020-08-18.dsk
 
    Byte-for-byte parity with the Rust build-po-image is checked out-of-band by diffing
-   the two tools' output (see PORTING_HOST_TOOLS.md). *)
+   the two tools' output over the same extracted tree (see test/README.md). *)
 
 open Oberon_tools
 
