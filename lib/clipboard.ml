@@ -14,6 +14,9 @@ type host =
   ; set_text : string -> unit
   }
 
+(** The host to wire when there is no clipboard: headless runs, tests, the bench. *)
+let noop_host = { get_text = (fun () -> None); set_text = (fun _ -> ()) }
+
 type state =
   | Idle
   | Get

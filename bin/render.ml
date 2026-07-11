@@ -21,9 +21,12 @@ type t =
   ; pixels : (int32, Bigarray.int32_elt, Bigarray.c_layout) Bigarray.Array1.t
   }
 
+(* The native texture size for the machine's framebuffer: 32 pixels per
+   framebuffer word — the one home of the words -> pixels expansion. *)
+let texture_size risc = Core.fb_width risc * 32, Core.fb_height risc
+
 let create renderer risc =
-  let tex_w = Core.fb_width risc * 32 in
-  let tex_h = Core.fb_height risc in
+  let tex_w, tex_h = texture_size risc in
   let texture =
     match
       Sdl.create_texture

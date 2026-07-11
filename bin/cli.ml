@@ -20,8 +20,14 @@ let usage =
    (headless only)\n"
 ;;
 
+(** Outcome of CLI parsing; the caller owns printing and exiting. *)
+type parsed =
+  | Config of config
+  | Help
+  | Invalid of string
+
 (** Validated configuration handed to the frontend. *)
-type config =
+and config =
   { width : int
   ; height : int
   ; mem : int
@@ -79,6 +85,7 @@ let parse_argv raw_args =
   and headless = ref false
   and frames = ref None
   and disk = ref None
+  and help = ref false
   and err = ref None in
   let fail msg = if !err = None then err := Some msg in
   let rec loop = function
@@ -121,9 +128,7 @@ let parse_argv raw_args =
     | "--headless" :: rest ->
       headless := true;
       loop rest
-    | ("--help" | "-h") :: _ ->
-      print_string usage;
-      exit 0
+    | ("--help" | "-h") :: _ -> help := true
     | (("--zoom" | "--mem" | "--size" | "--serial-in" | "--serial-out" | "--frames") as o)
       :: [] -> fail (Printf.sprintf "option %s requires a value" o)
     | opt :: _ when String.starts_with ~prefix:"-" opt ->
@@ -135,7 +140,6 @@ let parse_argv raw_args =
   loop (List.concat_map split_eq raw_args);
   let width = ref Risc_core.Risc.framebuffer_width in
   let height = ref Risc_core.Risc.framebuffer_height in
-  let size_option = !size <> None in
   (match !size with
    | Some s ->
      (match parse_size s with
@@ -145,32 +149,35 @@ let parse_argv raw_args =
         height := clamp 32 max_dim h
       | Error e -> fail e)
    | None -> ());
-  match !err with
-  | Some e -> Error e
-  | None ->
-    if !disk = None && not !boot_from_serial
-    then
-      Error
-        "a DISK-IMAGE is required (or pass --boot-from-serial).\n\
-         For more information, try '--help'."
-    else if !frames <> None && not !headless
-    then Error "--frames requires --headless"
-    else
-      Ok
-        { width = !width
-        ; height = !height
-        ; mem = !mem
-        ; configure = !mem <> 0 || size_option
-        ; zoom = !zoom
-        ; fullscreen = !fullscreen
-        ; leds = !leds
-        ; serial_in = !serial_in
-        ; serial_out = !serial_out
-        ; boot_from_serial = !boot_from_serial
-        ; headless = !headless
-        ; frames = !frames
-        ; disk_image = !disk
-        }
+  if !help
+  then Help
+  else (
+    match !err with
+    | Some e -> Invalid e
+    | None ->
+      if !disk = None && not !boot_from_serial
+      then
+        Invalid
+          "a DISK-IMAGE is required (or pass --boot-from-serial).\n\
+           For more information, try '--help'."
+      else if !frames <> None && not !headless
+      then Invalid "--frames requires --headless"
+      else
+        Config
+          { width = !width
+          ; height = !height
+          ; mem = !mem
+          ; configure = !mem <> 0 || !size <> None
+          ; zoom = !zoom
+          ; fullscreen = !fullscreen
+          ; leds = !leds
+          ; serial_in = !serial_in
+          ; serial_out = !serial_out
+          ; boot_from_serial = !boot_from_serial
+          ; headless = !headless
+          ; frames = !frames
+          ; disk_image = !disk
+          })
 ;;
 
 let parse () = parse_argv (List.tl (Array.to_list Sys.argv))

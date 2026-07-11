@@ -73,12 +73,16 @@ let fp_add x y u v =
     and e = U32.wrap (exp + 1) in
     if mag land 0x3FF_FFFC <> 0
     then (
-      let rec normalize m e =
-        if m land (1 lsl 24) = 0
-        then normalize (U32.wrap (m lsl 1)) (U32.wrap (e - 1))
-        else m, e
-      in
-      normalize m e)
+      (* The reference's normalize loop, as a loop: refs compile to mutable locals,
+         where a recursive helper returning a tuple was the core's only
+         per-instruction allocation. *)
+      let m = ref m
+      and e = ref e in
+      while !m land (1 lsl 24) = 0 do
+        m := U32.wrap (!m lsl 1);
+        e := U32.wrap (!e - 1)
+      done;
+      !m, !e)
     else U32.wrap (m lsl 24), U32.wrap (e - 24)
   in
   let x_is_zero = x land 0x7FFF_FFFF = 0 in

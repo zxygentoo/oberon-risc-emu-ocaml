@@ -28,14 +28,7 @@ let () =
       try Sys.remove tmp with
       | Sys_error _ -> ())
     (fun () ->
-       let risc = Risc.make () in
-       Risc.set_serial risc (Pclink.to_serial (Pclink.create ()));
-       Risc.set_clipboard
-         risc
-         (Clipboard.to_clipboard
-            (Clipboard.create
-               { Clipboard.get_text = (fun () -> None); set_text = (fun _ -> ()) }));
-       Risc.set_spi risc 1 (Disk.to_spi (Disk.create (Some tmp)));
+       let risc = Headless.standard_machine ~disk:tmp Clipboard.noop_host in
        Headless.run_frames risc frames;
        let words = Risc.fb_width risc * Risc.fb_height risc in
        let rec count_blank i n =

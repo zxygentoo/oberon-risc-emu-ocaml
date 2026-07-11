@@ -56,12 +56,7 @@ let close_file t =
   t.file <- None
 ;;
 
-let read_whole path =
-  let ic = open_in_bin path in
-  Fun.protect
-    ~finally:(fun () -> close_in_noerr ic)
-    (fun () -> really_input_string ic (in_channel_length ic))
-;;
+let read_whole path = In_channel.with_open_bin path In_channel.input_all
 
 (* Best-effort removal of a job/target file. *)
 let try_remove path =

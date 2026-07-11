@@ -237,21 +237,18 @@ let set_register t reg value =
   set_flag t flag_n (U32.to_i32 value < 0)
 ;;
 
-(* Whether the (un-negated) condition [cc] holds for the current flags. *)
+(* Whether the (un-negated) condition [cc] holds for the current flags. Each arm reads
+   just the flags it needs, like the C's switch. *)
 let cond_holds t cc =
   let open Risc5_isa in
-  let n = has t flag_n
-  and z = has t flag_z
-  and c = has t flag_c
-  and v = has t flag_v in
   match cc with
-  | Mi -> n
-  | Eq -> z
-  | Cs -> c
-  | Vs -> v
-  | Ls -> c || z
-  | Lt -> n <> v
-  | Le -> n <> v || z
+  | Mi -> has t flag_n
+  | Eq -> has t flag_z
+  | Cs -> has t flag_c
+  | Vs -> has t flag_v
+  | Ls -> has t flag_c || has t flag_z
+  | Lt -> has t flag_n <> has t flag_v
+  | Le -> has t flag_n <> has t flag_v || has t flag_z
   | True -> true
 ;;
 
@@ -562,12 +559,7 @@ module For_shim = struct
     let n = String.length image in
     let read_u32 at =
       if at + 4 <= n
-      then
-        Some
-          (Char.code image.[at]
-           lor (Char.code image.[at + 1] lsl 8)
-           lor (Char.code image.[at + 2] lsl 16)
-           lor (Char.code image.[at + 3] lsl 24))
+      then Some (Int32.to_int (String.get_int32_le image at) land U32.mask)
       else None
     in
     let rec load p =

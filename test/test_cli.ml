@@ -22,15 +22,17 @@ let eqx name got want =
 
 let ok args =
   match Cli.parse_argv args with
-  | Ok c -> c
-  | Error e ->
+  | Cli.Config c -> c
+  | Cli.Help ->
+    failwith (Printf.sprintf "unexpected help for %s" (String.concat " " args))
+  | Cli.Invalid e ->
     failwith (Printf.sprintf "unexpected error for %s: %s" (String.concat " " args) e)
 ;;
 
 let is_err args =
   match Cli.parse_argv args with
-  | Error _ -> true
-  | Ok _ -> false
+  | Cli.Invalid _ -> true
+  | Cli.Config _ | Cli.Help -> false
 ;;
 
 let () =
@@ -64,6 +66,10 @@ let () =
   check "frames_requires_headless" (is_err [ "--frames"; "1"; "d.dsk" ]);
   check "unknown_option" (is_err [ "--bogus"; "d.dsk" ]);
   check "invalid_size" (is_err [ "--size"; "nonsense"; "d.dsk" ]);
+  (* --help wins over a missing disk image; an earlier bad option wins over --help. *)
+  check "help" (Cli.parse_argv [ "--help" ] = Cli.Help);
+  check "help_short" (Cli.parse_argv [ "-h" ] = Cli.Help);
+  check "err_before_help" (is_err [ "--bogus"; "--help" ]);
   if !failures = 0
   then Printf.printf "ok: %d cli checks passed\n" !total
   else (

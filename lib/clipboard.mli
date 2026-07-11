@@ -12,6 +12,9 @@ type host =
   ; set_text : string -> unit
   }
 
+(** The host to wire when there is no clipboard: headless runs, tests, the bench. *)
+val noop_host : host
+
 (** The clipboard device exposed to the CPU over the {!Io.clipboard} MMIO ports. *)
 type t
 

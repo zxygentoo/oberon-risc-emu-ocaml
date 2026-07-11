@@ -9,6 +9,12 @@ val cpu_hz : int
 (** Frames per second the clock is paced at (60). *)
 val fps : int
 
+(** The standard machine wiring — PCLink serial, a clipboard bridge over the given host,
+    and the disk (if any) as SPI slave 1 — shared by the frontend, the golden boot test,
+    and the bench, which all must run the configuration the golden hashes were produced
+    with. *)
+val standard_machine : ?disk:string -> Clipboard.host -> Risc.t
+
 (** Advance the machine by [frames], driving the fixed 60 Hz synthetic clock but
     independent of wall time, so the run is reproducible. *)
 val run_frames : Risc.t -> int -> unit

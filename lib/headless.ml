@@ -9,6 +9,17 @@ let cpu_hz = 25_000_000
 (** Frames per second the frontend (and these helpers) pace the clock at. *)
 let fps = 60
 
+(** The standard machine wiring shared by the frontend, the golden boot test, and the
+    bench: PCLink serial, a clipboard bridge over [host], and the disk as SPI slave 1.
+    The golden hashes were produced with exactly this configuration. *)
+let standard_machine ?disk host =
+  let risc = Risc.make () in
+  Risc.set_serial risc (Pclink.to_serial (Pclink.create ()));
+  Risc.set_clipboard risc (Clipboard.to_clipboard (Clipboard.create host));
+  Risc.set_spi risc 1 (Disk.to_spi (Disk.create disk));
+  risc
+;;
+
 (** Advance [risc] by [frames], driving the fixed 60 Hz synthetic clock the
     frontend uses but independent of wall time, so the run is reproducible. *)
 let run_frames risc frames =
@@ -27,7 +38,7 @@ let fnv1a_word h w =
   let step h k =
     Int64.mul (Int64.logxor h (Int64.of_int ((w lsr (k * 8)) land 0xFF))) fnv_prime
   in
-  List.fold_left step h [ 0; 1; 2; 3 ]
+  step (step (step (step h 0) 1) 2) 3
 ;;
 
 (** FNV-1a of the active framebuffer (the visible [fb_width * fb_height] words). *)

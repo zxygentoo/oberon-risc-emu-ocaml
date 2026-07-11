@@ -10,6 +10,10 @@ open Tsdl
     framebuffer geometry. *)
 type t
 
+(** The native [(width, height)] in pixels of the machine's framebuffer
+    (32 pixels per framebuffer word). *)
+val texture_size : Risc_core.Risc.t -> int * int
+
 (** Create the streaming ARGB texture sized to the machine's framebuffer. *)
 val create : Sdl.renderer -> Risc_core.Risc.t -> t
 

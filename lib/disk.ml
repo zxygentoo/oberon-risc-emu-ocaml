@@ -46,11 +46,7 @@ let read_sector fd buf off =
      fill 0
    | None -> ());
   for i = 0 to 127 do
-    buf.(off + i)
-    <- Char.code (Bytes.get bytes (i * 4))
-       lor (Char.code (Bytes.get bytes ((i * 4) + 1)) lsl 8)
-       lor (Char.code (Bytes.get bytes ((i * 4) + 2)) lsl 16)
-       lor (Char.code (Bytes.get bytes ((i * 4) + 3)) lsl 24)
+    buf.(off + i) <- Int32.to_int (Bytes.get_int32_le bytes (i * 4)) land U32.mask
   done
 ;;
 
@@ -60,11 +56,7 @@ let write_sector fd buf =
   | Some fd ->
     let bytes = Bytes.make 512 '\000' in
     for i = 0 to 127 do
-      let w = buf.(i) in
-      Bytes.set bytes (i * 4) (Char.chr (w land 0xFF));
-      Bytes.set bytes ((i * 4) + 1) (Char.chr ((w lsr 8) land 0xFF));
-      Bytes.set bytes ((i * 4) + 2) (Char.chr ((w lsr 16) land 0xFF));
-      Bytes.set bytes ((i * 4) + 3) (Char.chr ((w lsr 24) land 0xFF))
+      Bytes.set_int32_le bytes (i * 4) (Int32.of_int buf.(i))
     done;
     let rec flush pos =
       if pos < 512
@@ -116,17 +108,13 @@ let run_command t =
      t.tx_buf.(0) <- 0;
      t.tx_buf.(1) <- 254;
      let secnum = U32.sub arg t.offset in
-     (match t.fd with
-      | Some fd -> seek_sector fd secnum
-      | None -> ());
+     Option.iter (fun fd -> seek_sector fd secnum) t.fd;
      read_sector t.fd t.tx_buf 2;
      t.tx_cnt <- 2 + 128
    | 88 ->
      t.state <- Write;
      let secnum = U32.sub arg t.offset in
-     (match t.fd with
-      | Some fd -> seek_sector fd secnum
-      | None -> ());
+     Option.iter (fun fd -> seek_sector fd secnum) t.fd;
      t.tx_buf.(0) <- 0;
      t.tx_cnt <- 1
    | _ ->

@@ -18,10 +18,7 @@ let name_len = 32 (* norebo.c NameLength *)
 let oberon_date = (24 lsl 26) lor (5 lsl 22) lor (27 lsl 17) lor (12 lsl 12)
 
 (* The universal error/-1 sentinel (u32::MAX). *)
-let max_u32 = 0xFFFF_FFFF
-
-(* Reinterpret a u32-range int as signed 32-bit (Rust's [x as i32]). *)
-let to_i32 v = if v >= 0x8000_0000 then v - 0x1_0000_0000 else v
+let max_u32 = U32.mask
 
 (* ---- Byte-addressable view over the guest's int-array RAM ----------------- *)
 
@@ -250,7 +247,7 @@ let files_seek host h pos whence =
        | 2 -> f.len
        | _ -> 0
      in
-     f.pos <- max 0 (base + to_i32 pos)
+     f.pos <- max 0 (base + U32.to_i32 pos)
    | None -> ());
   0
 ;;
@@ -356,7 +353,7 @@ let sysreq host n ram =
   and a2 = host.sysarg.(2) in
   match n with
   | 1 ->
-    host.exit <- Some (to_i32 a0);
+    host.exit <- Some (U32.to_i32 a0);
     0 (* Norebo.Halt *)
   | 2 -> Array.length host.args (* Norebo.Argc *)
   | 3 -> argv host a0 a1 a2 ram
@@ -403,7 +400,7 @@ let read_stdin_byte () =
 (* MMIO load at [offset] (= address - IO base). Never reaches guest memory. *)
 let host_load host offset =
   match offset with
-  | 0 -> int_of_float ((Unix.gettimeofday () -. host.start) *. 1000.) land max_u32
+  | 0 -> U32.wrap (int_of_float ((Unix.gettimeofday () -. host.start) *. 1000.))
   | 8 -> read_stdin_byte ()
   | 12 -> 3 (* status, carried from Oberon *)
   | 48 -> host.sysarg.(2)
