@@ -16,4 +16,5 @@
  (depends
   (ocaml (>= 4.08))
   tsdl
+  (crunch :build)
   (qcheck-core :with-test)))
