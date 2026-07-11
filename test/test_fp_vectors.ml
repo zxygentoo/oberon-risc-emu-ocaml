@@ -13,15 +13,16 @@
 open Risc_core
 
 let hex s = int_of_string ("0x" ^ s)
-let checks = ref 0
-let fails = ref 0
 
+(* Like {!Test_harness.eqx} but capping the printed failures at 20 (a systematic
+   divergence would otherwise print tens of thousands of lines). *)
 let record desc got want =
-  incr checks;
+  incr Test_harness.total;
   if got <> want
   then (
-    incr fails;
-    if !fails <= 20 then Printf.printf "FAIL: %s = %08X, expected %08X\n" desc got want)
+    incr Test_harness.failures;
+    if !Test_harness.failures <= 20
+    then Printf.printf "FAIL: %s = %08X, expected %08X\n" desc got want)
 ;;
 
 let () =
@@ -57,9 +58,13 @@ let () =
          done
        with
        | End_of_file -> ());
-  if !fails = 0
-  then Printf.printf "ok: %d fp-vector checks passed\n" !checks
-  else (
-    Printf.printf "FAILED: %d/%d fp-vector checks failed\n" !fails !checks;
-    exit 1)
+  (* An empty or mis-parsed vector file must not pass as "ok: 0 checks" (the committed
+     file yields 19,760). *)
+  if !Test_harness.total < 10_000
+  then (
+    Printf.printf
+      "FAILED: only %d fp-vector checks ran (vector file truncated?)\n"
+      !Test_harness.total;
+    exit 1);
+  Test_harness.summary "fp-vector checks"
 ;;

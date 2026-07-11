@@ -33,30 +33,43 @@ let () =
   in
   Fsutil.rm_rf tmp;
   Unix.mkdir tmp 0o755;
-  let src = Filename.concat tmp "src"
-  and out = Filename.concat tmp "out.dsk" in
-  (* Extract the golden image into a build-ready source tree — the extract-source core
-     (default behaviour: drop .rsc/.smb, regenerate .packonly). *)
-  ignore (Extract.extract_tree (Image.open_image dsk) ~output:src ~keep_objects:false);
-  Pipeline.build Seed.po ~sources:src ~output:out;
-  (* The built image must re-open as a valid Oberon FS carrying the expected files. *)
-  let names =
-    List.map (fun (e : Image.entry) -> e.name) (Image.entries (Image.open_image out))
+  (* Protect the scratch tree: Pipeline.build compiles the whole system, and an
+     exception there is this test's likeliest failure mode. The block returns pass/fail
+     and the exit happens outside, since [exit] would not unwind through [~finally]. *)
+  let ok =
+    Fun.protect
+      ~finally:(fun () -> Fsutil.rm_rf tmp)
+      (fun () ->
+         let src = Filename.concat tmp "src"
+         and out = Filename.concat tmp "out.dsk" in
+         (* Extract the golden image into a build-ready source tree — the extract-source
+            core (default behaviour: drop .rsc/.smb, regenerate .packonly). *)
+         ignore
+           (Extract.extract_tree (Image.open_image dsk) ~output:src ~keep_objects:false);
+         Pipeline.build Seed.po ~sources:src ~output:out;
+         (* The built image must re-open as a valid Oberon FS carrying the expected
+            files. *)
+         let names =
+           List.map
+             (fun (e : Image.entry) -> e.name)
+             (Image.entries (Image.open_image out))
+         in
+         let missing =
+           List.filter
+             (fun n -> not (List.mem n names))
+             [ "System.rsc"; "Oberon.rsc"; "Kernel.rsc"; "Modules.Mod"; "System.Tool" ]
+         in
+         List.iter (Printf.printf "FAIL: built image missing %s\n") missing;
+         let too_few = List.length names < 100 in
+         if too_few
+         then Printf.printf "FAIL: built image has only %d files\n" (List.length names);
+         if missing = [] && not too_few
+         then (
+           Printf.printf
+             "ok: build round-trip produced a valid Oberon image (%d files)\n"
+             (List.length names);
+           true)
+         else false)
   in
-  let missing =
-    List.filter
-      (fun n -> not (List.mem n names))
-      [ "System.rsc"; "Oberon.rsc"; "Kernel.rsc"; "Modules.Mod"; "System.Tool" ]
-  in
-  List.iter (Printf.printf "FAIL: built image missing %s\n") missing;
-  let too_few = List.length names < 100 in
-  if too_few
-  then Printf.printf "FAIL: built image has only %d files\n" (List.length names);
-  Fsutil.rm_rf tmp;
-  if missing = [] && not too_few
-  then
-    Printf.printf
-      "ok: build round-trip produced a valid Oberon image (%d files)\n"
-      (List.length names)
-  else exit 1
+  if not ok then exit 1
 ;;

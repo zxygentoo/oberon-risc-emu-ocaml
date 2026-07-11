@@ -3,25 +3,7 @@
    fake host backed by a mutable cell. *)
 
 open Risc_core
-
-let failures = ref 0
-let total = ref 0
-
-let check name cond =
-  incr total;
-  if not cond
-  then (
-    incr failures;
-    Printf.printf "FAIL: %s\n" name)
-;;
-
-let eqx name got want =
-  incr total;
-  if got <> want
-  then (
-    incr failures;
-    Printf.printf "FAIL: %s: got %d, want %d\n" name got want)
-;;
+open Test_harness
 
 (* A fake host clipboard backed by a mutable cell, returned alongside it. *)
 let make_host initial =
@@ -34,13 +16,13 @@ let () =
      collapses, so 8 are announced. *)
   (let _cell, host = make_host "ab\r\ncd\nef" in
    let c = Clipboard.to_clipboard (Clipboard.create host) in
-   eqx "get_announced_len" (c.Io.clip_read_control ()) 8;
+   eq "get_announced_len" (c.Io.clip_read_control ()) 8;
    let buf = Buffer.create 8 in
    for _ = 1 to 8 do
      Buffer.add_char buf (Char.chr (c.Io.clip_read_data ()))
    done;
    check "get_folded" (Buffer.contents buf = "ab\rcd\ref");
-   eqx "get_drained" (c.Io.clip_read_data ()) 0);
+   eq "get_drained" (c.Io.clip_read_data ()) 0);
   (* PUT converts Oberon's CR to LF for the host. *)
   (let cell, host = make_host "" in
    let c = Clipboard.to_clipboard (Clipboard.create host) in
@@ -56,11 +38,15 @@ let () =
   (* Empty clipboard reads zero. *)
   (let _cell, host = make_host "" in
    let c = Clipboard.to_clipboard (Clipboard.create host) in
-   eqx "empty_control" (c.Io.clip_read_control ()) 0;
-   eqx "empty_data" (c.Io.clip_read_data ()) 0);
-  if !failures = 0
-  then Printf.printf "ok: %d clipboard checks passed\n" !total
-  else (
-    Printf.printf "FAILED: %d/%d clipboard checks failed\n" !failures !total;
-    exit 1)
+   eq "empty_control" (c.Io.clip_read_control ()) 0;
+   eq "empty_data" (c.Io.clip_read_data ()) 0);
+  (* The no-op host (headless runs, tests, the bench): nothing to read, and a PUT is
+     accepted and dropped (reaching the last check is the assertion). *)
+  (let c = Clipboard.to_clipboard (Clipboard.create Clipboard.noop_host) in
+   eq "noop_control" (c.Io.clip_read_control ()) 0;
+   eq "noop_data" (c.Io.clip_read_data ()) 0;
+   c.Io.clip_write_control 2;
+   List.iter c.Io.clip_write_data [ Char.code 'h'; Char.code 'i' ];
+   check "noop_put_accepted" true);
+  summary "clipboard checks"
 ;;

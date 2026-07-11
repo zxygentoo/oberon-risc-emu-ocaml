@@ -1,18 +1,8 @@
 (* Compile-order resolution tests, ported from resolve.rs. *)
 
 open Oberon_tools
+open Test_harness
 module R = Resolve.For_tests
-
-let failures = ref 0
-let total = ref 0
-
-let check name cond =
-  incr total;
-  if not cond
-  then (
-    incr failures;
-    Printf.printf "FAIL: %s\n" name)
-;;
 
 let raises f =
   try
@@ -48,9 +38,5 @@ let () =
   check "topo_deterministic" (R.topo_sort [ "B", [ "Z" ]; "A", [] ] = [ "A"; "B" ]);
   (* cycle detected *)
   check "topo_cycle" (raises (fun () -> R.topo_sort [ "A", [ "B" ]; "B", [ "A" ] ]));
-  if !failures = 0
-  then Printf.printf "ok: %d resolve checks passed\n" !total
-  else (
-    Printf.printf "FAILED: %d/%d resolve checks failed\n" !failures !total;
-    exit 1)
+  summary "resolve checks"
 ;;

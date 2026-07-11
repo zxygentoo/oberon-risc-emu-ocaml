@@ -469,4 +469,33 @@ module For_tests = struct
   let mem_write_bytes = mem_write_bytes
   let read_name = read_name
   let valid_name = valid_name
+
+  type nonrec host = host
+
+  (* A host over a nonexistent cwd: files never persist, and a [files_old] host-side
+     read simply fails (mirrors the Rust test fixture). *)
+  let make_host () =
+    { cwd = "/nonexistent-shim-test"
+    ; path = []
+    ; args = [||]
+    ; sysarg = [| 0; 0; 0 |]
+    ; sysres = 0
+    ; files = Array.make max_files None
+    ; enumerate = []
+    ; exit = None
+    ; start = Unix.gettimeofday ()
+    }
+  ;;
+
+  let files_new = files_new
+  let files_old = files_old
+  let files_seek = files_seek
+  let files_read = files_read
+  let files_write = files_write
+
+  let file_capacity host h =
+    match file_mut host h with
+    | Some f -> Bytes.length f.data
+    | None -> 0
+  ;;
 end

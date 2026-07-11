@@ -5,6 +5,7 @@
    {!Risc_core.Risc.For_tests}, programs execute through the real dispatch. *)
 
 open Risc_core
+open Test_harness
 module F = Risc.For_tests
 
 (* Instructions assemble through the shared {!Risc5_isa} codec. *)
@@ -23,24 +24,6 @@ let cpu () =
 
 let ram = F.ram
 let regs = F.regs
-let failures = ref 0
-let total = ref 0
-
-let check name cond =
-  incr total;
-  if not cond
-  then (
-    incr failures;
-    Printf.printf "FAIL: %s\n" name)
-;;
-
-let eqx name got want =
-  incr total;
-  if got <> want
-  then (
-    incr failures;
-    Printf.printf "FAIL: %s: got 0x%08X, want 0x%08X\n" name got want)
-;;
 
 (* STW then LDW through the executed dispatch at [addr]. *)
 let store_load_word name addr value =
@@ -101,9 +84,5 @@ let () =
   (regs r).(1) <- 0;
   F.single_step r;
   eqx "past_ram_is_io" (regs r).(2) 0;
-  if !failures = 0
-  then Printf.printf "ok: %d checks passed\n" !total
-  else (
-    Printf.printf "FAILED: %d/%d checks failed\n" !failures !total;
-    exit 1)
+  summary "checks"
 ;;

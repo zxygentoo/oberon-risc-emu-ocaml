@@ -75,36 +75,10 @@ let disk_read (s : Io.spi) secnum =
   out
 ;;
 
-let counter = ref 0
-
-let temp_dir () =
-  incr counter;
-  let d =
-    Filename.concat
-      (Filename.get_temp_dir_name ())
-      (Printf.sprintf "oberon_prop_%d_%d" (Unix.getpid ()) !counter)
-  in
-  Unix.mkdir d 0o755;
-  d
-;;
-
-let rmrf d =
-  (try
-     Array.iter
-       (fun f ->
-          try Sys.remove (Filename.concat d f) with
-          | Sys_error _ -> ())
-       (Sys.readdir d)
-   with
-   | Sys_error _ -> ());
-  try Unix.rmdir d with
-  | Unix.Unix_error _ -> ()
-;;
+let with_scratch f = Test_harness.with_scratch ~prefix:"oberon_prop_" f
 
 let write_file dir name content =
-  let oc = open_out_bin (Filename.concat dir name) in
-  output_string oc content;
-  close_out oc
+  Test_harness.write_file (Filename.concat dir name) content
 ;;
 
 (* Run [f] with stdout redirected to /dev/null (PCLink logs each transfer). *)
@@ -265,33 +239,30 @@ let pclink_props =
       byte_string
       (fun content ->
          silenced (fun () ->
-           let dir = temp_dir () in
-           Fun.protect
-             ~finally:(fun () -> rmrf dir)
-             (fun () ->
-                write_file dir "payload" content;
-                write_file dir "PCLink.REC" "payload";
-                let s = Pclink.to_serial (Pclink.in_dir dir) in
-                ignore (s.serial_read_status ());
-                ignore (s.serial_read_data () : int) (* mode byte *);
-                s.serial_write_data 0x10 (* ACK *);
-                (* skip the echoed filename ("payload") + NUL *)
-                for _ = 1 to String.length "payload" + 1 do
-                  ignore (s.serial_read_data () : int)
-                done;
-                (* read length-prefixed blocks until a 0-length terminator *)
-                let buf = Buffer.create (String.length content) in
-                let rec blocks () =
-                  let len = s.serial_read_data () in
-                  if len > 0
-                  then (
-                    for _ = 1 to len do
-                      Buffer.add_char buf (Char.chr (s.serial_read_data ()))
-                    done;
-                    blocks ())
-                in
-                blocks ();
-                Buffer.contents buf = content)))
+           with_scratch (fun dir ->
+             write_file dir "payload" content;
+             write_file dir "PCLink.REC" "payload";
+             let s = Pclink.to_serial (Pclink.in_dir dir) in
+             ignore (s.serial_read_status ());
+             ignore (s.serial_read_data () : int) (* mode byte *);
+             s.serial_write_data 0x10 (* ACK *);
+             (* skip the echoed filename ("payload") + NUL *)
+             for _ = 1 to String.length "payload" + 1 do
+               ignore (s.serial_read_data () : int)
+             done;
+             (* read length-prefixed blocks until a 0-length terminator *)
+             let buf = Buffer.create (String.length content) in
+             let rec blocks () =
+               let len = s.serial_read_data () in
+               if len > 0
+               then (
+                 for _ = 1 to len do
+                   Buffer.add_char buf (Char.chr (s.serial_read_data ()))
+                 done;
+                 blocks ())
+             in
+             blocks ();
+             Buffer.contents buf = content)))
   ]
 ;;
 

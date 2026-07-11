@@ -27,14 +27,21 @@
   (names cpu_csim)
   (extra_deps risc.c risc.h risc-io.h risc-boot.inc risc_fp.c risc-fp.h)))
 
+; env_var: dune doesn't track environment variables by default, so without it a
+; cached success would ignore a later QCHECK_SEED.
+
 (rule
  (alias cosim)
- (deps test_cosim_fp.exe)
+ (deps
+  test_cosim_fp.exe
+  (env_var QCHECK_SEED))
  (action
   (run ./test_cosim_fp.exe)))
 
 (rule
  (alias cosim)
- (deps test_cosim_cpu.exe)
+ (deps
+  test_cosim_cpu.exe
+  (env_var QCHECK_SEED))
  (action
   (run ./test_cosim_cpu.exe)))

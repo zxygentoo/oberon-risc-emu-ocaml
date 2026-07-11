@@ -46,8 +46,14 @@ let is_mov_flags_read ir =
 
 let is_branch ir = ir land 0xC000_0000 = 0xC000_0000
 
-(* Persistent machine + buffers, reused across cases (mirrors the C global). *)
+(* Persistent machine + buffers, reused across cases (mirrors the C global). The vendored
+   C reference has 1 MiB of RAM, so the OCaml machine is clamped to match: otherwise a
+   random store into the widened default's [1 MiB, 16 MiB) persists here but is dropped
+   as unmapped I/O by the C, and a later load from it flakes the lockstep. The himem
+   region is validated by test_himem.ml instead. *)
+let mem_size = 0x0010_0000
 let oc = Risc.make ()
+let () = Risc.For_shim.configure_shim oc mem_size
 let set32 ba i v = BA.set ba i (Int32.of_int v)
 let get32 ba i = Int32.to_int (BA.get ba i) land 0xFFFF_FFFF
 

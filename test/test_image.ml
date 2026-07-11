@@ -1,25 +1,7 @@
 (* Oberon FS reader tests, ported from image.rs (the format's executable spec). *)
 
 open Oberon_tools
-
-let failures = ref 0
-let total = ref 0
-
-let check name cond =
-  incr total;
-  if not cond
-  then (
-    incr failures;
-    Printf.printf "FAIL: %s\n" name)
-;;
-
-let eqx name got want =
-  incr total;
-  if got <> want
-  then (
-    incr failures;
-    Printf.printf "FAIL: %s\n" name)
-;;
+open Test_harness
 
 let raises_bad name f =
   incr total;
@@ -88,8 +70,8 @@ let () =
    let entries = Image.entries image in
    eqx "single_len" (List.length entries) 1;
    let e = List.hd entries in
-   eqx "single_name" e.Image.name "Hello.Mod";
-   eqx "single_content" (Image.read_file image e.Image.header) "Hello, Oberon!");
+   eqs "single_name" e.Image.name "Hello.Mod";
+   eqs "single_content" (Image.read_file image e.Image.header) "Hello, Oberon!");
   (* reconstructs_a_multi_sector_file: 672 inline + 328 in sector 3 *)
   (let img = blank () in
    let content = String.init 1000 (fun i -> Char.chr (i mod 251)) in
@@ -104,8 +86,8 @@ let () =
    put_bytes img 3 0 (String.sub content 672 (1000 - 672));
    let image = Image.from_bytes (Bytes.to_string img) in
    let e = List.hd (Image.entries image) in
-   eqx "multi_name" e.Image.name "Big.Mod";
-   eqx "multi_content" (Image.read_file image e.Image.header) content);
+   eqs "multi_name" e.Image.name "Big.Mod";
+   eqs "multi_content" (Image.read_file image e.Image.header) content);
   (* walks_the_btree_in_name_order *)
   (let img = blank () in
    put_u32 img 1 0 dir_mark;
@@ -142,9 +124,49 @@ let () =
   check "name_empty" (Image.For_tests.read_name "\x00" 0 = None);
   check "name_leading_digit" (Image.For_tests.read_name "9bad\x00" 0 = None);
   check "name_slash" (Image.For_tests.read_name "a/b\x00" 0 = None);
-  if !failures = 0
-  then Printf.printf "ok: %d image checks passed\n" !total
-  else (
-    Printf.printf "FAILED: %d/%d image checks failed\n" !failures !total;
-    exit 1)
+  (* Extract.extract_tree over a synthetic image: X.Mod is a compile candidate (left off
+     .packonly) iff X.rsc is on the image; objects are skipped by default and kept —
+     counted as objects, not pack-only — with keep_objects. *)
+  (let img = blank () in
+   put_dir_page
+     img
+     1
+     0
+     [ "Kernel.Mod", adr 2; "Kernel.rsc", adr 3; "Oberon10.Scn.Fnt", adr 4 ];
+   put_small_file img 2 "Kernel.Mod" "MODULE Kernel; END Kernel.";
+   put_small_file img 3 "Kernel.rsc" "\x01\x02object";
+   put_small_file img 4 "Oberon10.Scn.Fnt" "fontdata";
+   let image = Image.from_bytes (Bytes.to_string img) in
+   with_scratch ~prefix:"oberon_extract_" (fun dir ->
+     let out = Filename.concat dir "tree" in
+     let (stats : Extract.stats) =
+       Extract.extract_tree image ~output:out ~keep_objects:false
+     in
+     eq "extract_extracted" stats.extracted 2;
+     eq "extract_skipped" stats.skipped 1;
+     eq "extract_objects" stats.objects 0;
+     check "extract_source_written" (Sys.file_exists (Filename.concat out "Kernel.Mod"));
+     check
+       "extract_rsc_dropped"
+       (not (Sys.file_exists (Filename.concat out "Kernel.rsc")));
+     eqs
+       "extract_content"
+       (read_file (Filename.concat out "Kernel.Mod"))
+       "MODULE Kernel; END Kernel.";
+     let pack = Packonly.parse (read_file (Filename.concat out Packonly.file_name)) in
+     check
+       "extract_packonly_is_the_font"
+       (Packonly.StringSet.elements pack = [ "Oberon10.Scn.Fnt" ]);
+     let out2 = Filename.concat dir "tree2" in
+     let (kept : Extract.stats) =
+       Extract.extract_tree image ~output:out2 ~keep_objects:true
+     in
+     eq "extract_kept_extracted" kept.extracted 3;
+     eq "extract_kept_objects" kept.objects 1;
+     check "extract_kept_rsc" (Sys.file_exists (Filename.concat out2 "Kernel.rsc"));
+     let pack2 = Packonly.parse (read_file (Filename.concat out2 Packonly.file_name)) in
+     check
+       "extract_kept_packonly_unchanged"
+       (Packonly.StringSet.elements pack2 = [ "Oberon10.Scn.Fnt" ])));
+  summary "image checks"
 ;;

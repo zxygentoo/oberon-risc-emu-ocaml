@@ -3,9 +3,8 @@
    numlock hack, the keypad-`/` shift hack, and unmapped keys. *)
 
 open Tsdl
+open Test_harness
 
-let failures = ref 0
-let total = ref 0
 let bytes_to_list b = List.init (Bytes.length b) (fun i -> Char.code (Bytes.get b i))
 let enc scancode make kmod = bytes_to_list (Ps2.encode ~scancode ~make ~kmod)
 
@@ -44,9 +43,5 @@ let () =
     [ 0xE0; 0xF0; 0x4A; 0xE0; 0x12 ];
   (* Unmapped key (Pause) emits nothing. *)
   eqlist "unmapped" (enc Sdl.Scancode.pause true none) [];
-  if !failures = 0
-  then Printf.printf "ok: %d ps2 checks passed\n" !total
-  else (
-    Printf.printf "FAILED: %d/%d ps2 checks failed\n" !failures !total;
-    exit 1)
+  summary "ps2 checks"
 ;;

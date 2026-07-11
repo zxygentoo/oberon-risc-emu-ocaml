@@ -1,0 +1,6 @@
+; The shared test harness lives in a subdirectory library: a (library) in test/
+; itself would force explicit (modules) enumeration on every stanza there.
+
+(library
+ (name test_harness)
+ (libraries unix))

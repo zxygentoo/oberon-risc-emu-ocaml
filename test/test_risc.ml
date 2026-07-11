@@ -4,6 +4,7 @@
    paths. White-box access to the machine goes through {!Risc_core.Risc.For_tests}. *)
 
 open Risc_core
+open Test_harness
 module F = Risc.For_tests
 
 (* Opcodes, in ISA order. *)
@@ -72,24 +73,6 @@ let z r = F.flags r land flag_z <> 0
 let n r = F.flags r land flag_n <> 0
 let c r = F.flags r land flag_c <> 0
 let v r = F.flags r land flag_v <> 0
-let failures = ref 0
-let total = ref 0
-
-let check name cond =
-  incr total;
-  if not cond
-  then (
-    incr failures;
-    Printf.printf "FAIL: %s\n" name)
-;;
-
-let eqx name got want =
-  incr total;
-  if got <> want
-  then (
-    incr failures;
-    Printf.printf "FAIL: %s: got 0x%08X, want 0x%08X\n" name got want)
-;;
 
 let () =
   (* ---- MOV ---- *)
@@ -407,9 +390,5 @@ let () =
        ; 'c', 7
        ; 'd', 0x41
        ]);
-  if !failures = 0
-  then Printf.printf "ok: %d checks passed\n" !total
-  else (
-    Printf.printf "FAILED: %d/%d checks failed\n" !failures !total;
-    exit 1)
+  summary "checks"
 ;;

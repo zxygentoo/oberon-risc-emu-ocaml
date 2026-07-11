@@ -11,21 +11,25 @@
   test_raw_serial
   test_fp_vectors
   test_boot)
- (libraries risc_core unix)
+ (libraries risc_core unix test_harness)
  (deps data/fp_vectors.txt ../DiskImage/Oberon-2020-08-18.dsk))
 
 ; Frontend tests (the testable bin library + tsdl; no SDL_Init at runtime).
 
 (tests
- (names test_ps2 test_cli test_scale)
- (libraries oberon_frontend tsdl))
+ (names test_ps2 test_cli test_scale test_hotkeys)
+ (libraries oberon_frontend risc_core tsdl test_harness))
 
 ; Instruction-codec tests (QCheck) — the shared Risc5_isa encode/decode + the
 ; differential check of encode against the hand-rolled golden encoders.
 
 (test
  (name test_risc5_isa)
- (libraries risc_core qcheck-core qcheck-core.runner))
+ (libraries risc_core qcheck-core qcheck-core.runner)
+ ; dune doesn't track env vars by default; without this a cached success would
+ ; ignore a later QCHECK_SEED.
+ (deps
+  (env_var QCHECK_SEED)))
 
 ; Property-based tests (QCheck) — spans the core and frontend.
 
@@ -37,25 +41,41 @@
   tsdl
   unix
   qcheck-core
-  qcheck-core.runner))
+  qcheck-core.runner
+  test_harness)
+ (deps
+  (env_var QCHECK_SEED)))
 
-; Host-tool tests (oberon_tools): converters, .packonly, FS reader, resolver.
+; Host-tool tests (oberon_tools): converters, .packonly, FS reader + extractor,
+; resolver, the shared CLI walker, and the fs helpers.
 
 (tests
- (names test_convert test_packonly test_image test_resolve)
- (libraries oberon_tools))
+ (names
+  test_convert
+  test_packonly
+  test_image
+  test_resolve
+  test_tool_cli
+  test_fsutil)
+ (libraries oberon_tools test_harness))
+
+; Embedded-seed structural checks (risc_core for boot_inner_core).
+
+(test
+ (name test_seed)
+ (libraries oberon_tools risc_core test_harness))
 
 ; Pipeline filesystem-helper tests (need unix for mkdir/getpid).
 
 (test
  (name test_pipeline)
- (libraries oberon_tools unix))
+ (libraries oberon_tools unix test_harness))
 
 ; Shim ABI unit tests.
 
 (test
  (name test_shim)
- (libraries risc_core))
+ (libraries risc_core test_harness))
 
 ; End-to-end image-builder round-trip (opt-in: self-skips unless OBERON_ROUNDTRIP
 ; is set, since it boots the shim and compiles the whole system).
@@ -63,5 +83,9 @@
 (test
  (name test_build_roundtrip)
  (libraries oberon_tools unix)
+ ; env_var: without it, dune's cached "skipped" success would replay even when
+ ; OBERON_ROUNDTRIP=1 is set later, silently never running the roundtrip.
+ (deps
+  (env_var OBERON_ROUNDTRIP))
  (action
   (run %{test} %{dep:../DiskImage/Oberon-2020-08-18.dsk})))
