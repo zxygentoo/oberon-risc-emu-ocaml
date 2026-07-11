@@ -50,29 +50,21 @@ let bench_boot disk frames =
 ;;
 
 (* Peak single-step rate: a tight 6-instruction loop (ALU + store + load +
-   backward branch) executed [steps] times. *)
+   backward branch) executed [steps] times. Instructions assemble through the
+   shared {!Risc5_isa} codec. *)
 module F = Risc.For_tests
 
-let reg q u v a b op ci =
-  (q lsl 30)
-  lor (u lsl 29)
-  lor (v lsl 28)
-  lor (a lsl 24)
-  lor (b lsl 20)
-  lor (op lsl 16)
-  lor ci
+let alu op a b c =
+  Risc5_isa.(encode (Alu { op; u = false; v = false; a; b; operand = Reg c }))
 ;;
 
-let mem u v a b off =
-  0x8000_0000
-  lor (u lsl 29)
-  lor (v lsl 28)
-  lor (a lsl 24)
-  lor (b lsl 20)
-  lor (off land 0x000F_FFFF)
-;;
+let stw a base = Risc5_isa.(encode (Store { size = W; a; base; off = 0 }))
+let ldw a base = Risc5_isa.(encode (Load { size = W; a; base; off = 0 }))
 
-let br_imm cond off = 0xE000_0000 lor (cond lsl 24) lor (off land 0x00FF_FFFF)
+let b_always off =
+  Risc5_isa.(
+    encode (Branch { cond = True; neg = false; link = false; target = To_off off }))
+;;
 
 let bench_cpu steps =
   let make () =
@@ -83,12 +75,13 @@ let bench_cpu steps =
     (F.regs r).(5) <- 0x100;
     (* a RAM address for the store/load *)
     let body =
-      [| reg 0 0 0 1 1 8 2 (* ADD R1 = R1 + R2 *)
-       ; reg 0 0 0 2 2 9 3 (* SUB R2 = R2 - R3 *)
-       ; reg 0 0 0 4 1 4 2 (* AND R4 = R1 & R2 *)
-       ; mem 1 0 4 5 0 (* store R4 -> [R5] *)
-       ; mem 0 0 6 5 0 (* load  [R5] -> R6 *)
-       ; br_imm 7 (-6) (* branch always -> back to word 0 *)
+      let open Risc5_isa in
+      [| alu Add 1 1 2 (* ADD R1 = R1 + R2 *)
+       ; alu Sub 2 2 3 (* SUB R2 = R2 - R3 *)
+       ; alu And 4 1 2 (* AND R4 = R1 & R2 *)
+       ; stw 4 5 (* store R4 -> [R5] *)
+       ; ldw 6 5 (* load  [R5] -> R6 *)
+       ; b_always (-6) (* branch always -> back to word 0 *)
       |]
     in
     Array.iteri (fun i w -> (F.ram r).(i) <- w) body;

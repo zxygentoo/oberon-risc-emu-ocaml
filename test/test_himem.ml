@@ -7,26 +7,12 @@
 open Risc_core
 module F = Risc.For_tests
 
-(* Instruction encoders (the test_risc.ml helpers). *)
-let add = 8
+(* Instructions assemble through the shared {!Risc5_isa} codec. *)
+let stw a base = Risc5_isa.(encode (Store { size = W; a; base; off = 0 }))
+let ldw a base = Risc5_isa.(encode (Load { size = W; a; base; off = 0 }))
 
-let reg q u v a b op ci =
-  (q lsl 30)
-  lor (u lsl 29)
-  lor (v lsl 28)
-  lor (a lsl 24)
-  lor (b lsl 20)
-  lor (op lsl 16)
-  lor ci
-;;
-
-let mem u v a b off =
-  0x8000_0000
-  lor (u lsl 29)
-  lor (v lsl 28)
-  lor (a lsl 24)
-  lor (b lsl 20)
-  lor (off land 0x000F_FFFF)
+let add a b c =
+  Risc5_isa.(encode (Alu { op = Add; u = false; v = false; a; b; operand = Reg c }))
 ;;
 
 let cpu () =
@@ -59,8 +45,8 @@ let eqx name got want =
 (* STW then LDW through the executed dispatch at [addr]. *)
 let store_load_word name addr value =
   let r = cpu () in
-  (ram r).(0) <- mem 1 0 1 0 0 (* STW R1, [R0] *);
-  (ram r).(1) <- mem 0 0 2 0 0 (* LDW R2, [R0] *);
+  (ram r).(0) <- stw 1 0 (* STW R1, [R0] *);
+  (ram r).(1) <- ldw 2 0 (* LDW R2, [R0] *);
   (regs r).(0) <- addr;
   (regs r).(1) <- value;
   F.single_step r;
@@ -82,7 +68,7 @@ let () =
   eqx "stb_himem_le_word" (ram r).(0x0012_3400 / 4) (0xAB lsl 8);
   (* Execute from himem: PC above 1 MB fetches from RAM, not the void. *)
   let r = cpu () in
-  (ram r).(0x0010_0000 / 4) <- reg 0 0 0 2 0 add 1 (* ADD R2, R0, R1 *);
+  (ram r).(0x0010_0000 / 4) <- add 2 0 1 (* ADD R2, R0, R1 *);
   (regs r).(0) <- 40;
   (regs r).(1) <- 2;
   F.set_pc r (0x0010_0000 / 4);
@@ -104,13 +90,13 @@ let () =
      out-of-bounds crash here, not a wrong value). *)
   let r = cpu () in
   Risc.set_time r 12345;
-  (ram r).(0) <- mem 0 0 2 0 0 (* LDW R2, [R0] *);
+  (ram r).(0) <- ldw 2 0 (* LDW R2, [R0] *);
   (regs r).(0) <- F.io_start;
   F.single_step r;
   eqx "mmio_above_ram" (regs r).(2) 12345;
   (* The first word past RAM is I/O space (unmapped reads 0), not RAM. *)
   let r = cpu () in
-  (ram r).(0) <- mem 0 0 2 0 0;
+  (ram r).(0) <- ldw 2 0;
   (regs r).(0) <- 0x0100_0000;
   (regs r).(1) <- 0;
   F.single_step r;
