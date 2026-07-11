@@ -7,11 +7,11 @@
 (** What sets one builder apart: the embedded toolchain seed and a name. *)
 type seed =
   { toolchain : (string * string) list
-  (** Host-glue [.Mod] sources plus the prebuilt bootstrap [.rsc]/[InnerCore] that seed
+    (** Host-glue [.Mod] sources plus the prebuilt bootstrap [.rsc]/[InnerCore] that seed
       the first compile, as [(filename, bytes)] written flat into a scratch directory.
       Flat names never collide ([.Mod] vs [.rsc]). *)
   ; golden_inner_core : string
-  (** The committed golden inner core; the one freshly linked during the build must
+    (** The committed golden inner core; the one freshly linked during the build must
       reproduce it byte-for-byte (a self-consistency check). *)
   ; name : string (** Tool name, used in messages and the scratch-dir name. *)
   }

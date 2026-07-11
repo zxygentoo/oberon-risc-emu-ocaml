@@ -265,7 +265,10 @@ let files_read host h adr siz ram =
     let start = f.pos in
     let avail = if f.len > start then f.len - start else 0 in
     let n = min siz avail in
-    let buf = Bytes.make siz '\000' (* tail is zero-filled, as in norebo.c *) in
+    let buf =
+      Bytes.make siz '\000'
+      (* tail is zero-filled, as in norebo.c *)
+    in
     Bytes.blit f.data start buf 0 n;
     f.pos <- start + n;
     mem_write_bytes ram adr buf;
@@ -273,7 +276,10 @@ let files_read host h adr siz ram =
 ;;
 
 let files_write host h adr siz ram =
-  let siz = min siz (mem_len_bytes ram) (* the source is guest RAM *) in
+  let siz =
+    min siz (mem_len_bytes ram)
+    (* the source is guest RAM *)
+  in
   match file_mut host h with
   | None -> 0
   | Some f ->

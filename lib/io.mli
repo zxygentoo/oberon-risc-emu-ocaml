@@ -35,11 +35,11 @@ type led = { led_write : int -> unit }
     invoked from the CPU's IO dispatch. *)
 type shim =
   { shim_load : int -> int
-  (** Answer an MMIO load at the given offset ([address - IO base]); never reaches into
+    (** Answer an MMIO load at the given offset ([address - IO base]); never reaches into
       guest memory. *)
   ; shim_store : int -> int -> int array -> unit
-  (** Handle an MMIO store [offset value ram]; only the syscall trigger reaches into the
+    (** Handle an MMIO store [offset value ram]; only the syscall trigger reaches into the
       guest [ram]. *)
   ; shim_exit_code : unit -> int option
-  (** [Some code] once the guest has halted (a [Halt] syscall or a trap). *)
+    (** [Some code] once the guest has halted (a [Halt] syscall or a trap). *)
   }

@@ -39,10 +39,11 @@ let rec mkdir_p dir =
 (* Write one extracted file into [dir]; reject any name that isn't a direct child (defense
    in depth on top of the reader's name validation). *)
 let write_file dir name data =
-  if String.contains name '/'
-     || name = ""
-     || name = Filename.current_dir_name
-     || name = Filename.parent_dir_name
+  if
+    String.contains name '/'
+    || name = ""
+    || name = Filename.current_dir_name
+    || name = Filename.parent_dir_name
   then failwith (Printf.sprintf "refusing suspicious file name '%s'" name);
   Out_channel.with_open_bin (Filename.concat dir name) (fun oc -> output_string oc data)
 ;;

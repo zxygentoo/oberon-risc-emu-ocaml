@@ -47,16 +47,16 @@ let extract_tree image_path out =
   let pack =
     List.fold_left
       (fun pack (e : Image.entry) ->
-        if is_compiled e.name
-        then pack
-        else (
-          write_file (Filename.concat out e.name) (Image.read_file img e.header);
-          let is_module_source =
-            match strip_suffix e.name ".Mod" with
-            | Some stem -> Packonly.StringSet.mem stem compiled
-            | None -> false
-          in
-          if is_module_source then pack else Packonly.StringSet.add e.name pack))
+         if is_compiled e.name
+         then pack
+         else (
+           write_file (Filename.concat out e.name) (Image.read_file img e.header);
+           let is_module_source =
+             match strip_suffix e.name ".Mod" with
+             | Some stem -> Packonly.StringSet.mem stem compiled
+             | None -> false
+           in
+           if is_module_source then pack else Packonly.StringSet.add e.name pack))
       Packonly.StringSet.empty
       entries
   in

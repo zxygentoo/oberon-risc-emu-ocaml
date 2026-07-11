@@ -82,11 +82,11 @@ let has_ext name ext = Filename.extension name = "." ^ ext
 let bulk_rename dir old_ext new_ext =
   Array.iter
     (fun name ->
-      if has_ext name old_ext
-      then
-        Sys.rename
-          (Filename.concat dir name)
-          (Filename.concat dir (Filename.remove_extension name ^ "." ^ new_ext)))
+       if has_ext name old_ext
+       then
+         Sys.rename
+           (Filename.concat dir name)
+           (Filename.concat dir (Filename.remove_extension name ^ "." ^ new_ext)))
     (Sys.readdir dir)
 ;;
 
@@ -175,11 +175,11 @@ let run_pipeline seed sources scratch visible plan =
   (* Fail loudly on a module that produced no object. Objects are named by module. *)
   List.iter
     (fun (c : Resolve.candidate) ->
-      let rsc = Filename.concat oberon_dir (c.module_ ^ ".rsc") in
-      if not (Sys.file_exists rsc)
-      then
-        failwith
-          (Printf.sprintf "%s (MODULE %s) did not compile (no %s)" c.file c.module_ rsc))
+       let rsc = Filename.concat oberon_dir (c.module_ ^ ".rsc") in
+       if not (Sys.file_exists rsc)
+       then
+         failwith
+           (Printf.sprintf "%s (MODULE %s) did not compile (no %s)" c.file c.module_ rsc))
     plan;
   Printf.eprintf "Linking the inner core onto the disk\n%!";
   bulk_rename oberon_dir "rsc" "rsx";

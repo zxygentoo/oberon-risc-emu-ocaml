@@ -6,12 +6,12 @@ let latin1_to_utf8 bytes =
   let buf = Buffer.create (String.length bytes) in
   String.iter
     (fun c ->
-      let b = Char.code c in
-      if b < 0x80
-      then Buffer.add_char buf c
-      else (
-        Buffer.add_char buf (Char.chr (0xC0 lor (b lsr 6)));
-        Buffer.add_char buf (Char.chr (0x80 lor (b land 0x3F)))))
+       let b = Char.code c in
+       if b < 0x80
+       then Buffer.add_char buf c
+       else (
+         Buffer.add_char buf (Char.chr (0xC0 lor (b lsr 6)));
+         Buffer.add_char buf (Char.chr (0x80 lor (b land 0x3F)))))
     bytes;
   Buffer.contents buf
 ;;

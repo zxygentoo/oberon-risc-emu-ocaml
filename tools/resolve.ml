@@ -129,17 +129,17 @@ let topo_sort nodes =
   let waiting, dependents =
     List.fold_left
       (fun (waiting, dependents) (name, imports) ->
-        let deps =
-          SSet.of_list (List.filter (fun d -> d <> name && SSet.mem d names) imports)
-        in
-        let dependents =
-          SSet.fold
-            (fun d acc ->
-              SMap.add d (name :: Option.value ~default:[] (SMap.find_opt d acc)) acc)
-            deps
-            dependents
-        in
-        SMap.add name deps waiting, dependents)
+         let deps =
+           SSet.of_list (List.filter (fun d -> d <> name && SSet.mem d names) imports)
+         in
+         let dependents =
+           SSet.fold
+             (fun d acc ->
+                SMap.add d (name :: Option.value ~default:[] (SMap.find_opt d acc)) acc)
+             deps
+             dependents
+         in
+         SMap.add name deps waiting, dependents)
       (SMap.empty, SMap.empty)
       nodes
   in
@@ -158,12 +158,12 @@ let topo_sort nodes =
       let ready, waiting =
         List.fold_left
           (fun (ready, waiting) m ->
-            match SMap.find_opt m waiting with
-            | None -> ready, waiting
-            | Some deps ->
-              let deps = SSet.remove name deps in
-              ( (if SSet.is_empty deps then SSet.add m ready else ready)
-              , SMap.add m deps waiting ))
+             match SMap.find_opt m waiting with
+             | None -> ready, waiting
+             | Some deps ->
+               let deps = SSet.remove name deps in
+               ( (if SSet.is_empty deps then SSet.add m ready else ready)
+               , SMap.add m deps waiting ))
           (SSet.remove name ready, SMap.remove name waiting)
           (Option.value ~default:[] (SMap.find_opt name dependents))
       in
@@ -193,46 +193,46 @@ let resolve sources visible =
   let present = Packonly.StringSet.of_list visible in
   Packonly.StringSet.iter
     (fun name ->
-      if not (Packonly.StringSet.mem name present)
-      then
-        failwith
-          (Printf.sprintf
-             ".packonly lists `%s`, but there is no such file in %s"
-             name
-             sources))
+       if not (Packonly.StringSet.mem name present)
+       then
+         failwith
+           (Printf.sprintf
+              ".packonly lists `%s`, but there is no such file in %s"
+              name
+              sources))
     pack;
   (* Every visible file that isn't pack-only is an Oberon source: parse its header for the
      module it declares and its imports, rejecting duplicate module names. *)
   let file_of, nodes_rev =
     List.fold_left
       (fun (file_of, nodes) file ->
-        if Packonly.StringSet.mem file pack
-        then file_of, nodes
-        else (
-          let src =
-            match read_file_opt (Filename.concat sources file) with
-            | Some s -> s
-            | None -> failwith (Printf.sprintf "can't read %s" file)
-          in
-          let module_, imports =
-            try parse_header src with
-            | Failure e ->
+         if Packonly.StringSet.mem file pack
+         then file_of, nodes
+         else (
+           let src =
+             match read_file_opt (Filename.concat sources file) with
+             | Some s -> s
+             | None -> failwith (Printf.sprintf "can't read %s" file)
+           in
+           let module_, imports =
+             try parse_header src with
+             | Failure e ->
+               failwith
+                 (Printf.sprintf
+                    "%s: not Oberon source (%s); if it is data, add it to .packonly"
+                    file
+                    e)
+           in
+           (match SMap.find_opt module_ file_of with
+            | Some other ->
               failwith
                 (Printf.sprintf
-                   "%s: not Oberon source (%s); if it is data, add it to .packonly"
+                   "%s and %s both declare MODULE %s; list one in .packonly"
+                   other
                    file
-                   e)
-          in
-          (match SMap.find_opt module_ file_of with
-           | Some other ->
-             failwith
-               (Printf.sprintf
-                  "%s and %s both declare MODULE %s; list one in .packonly"
-                  other
-                  file
-                  module_)
-           | None -> ());
-          SMap.add module_ file file_of, (module_, imports) :: nodes))
+                   module_)
+            | None -> ());
+           SMap.add module_ file file_of, (module_, imports) :: nodes))
       (SMap.empty, [])
       visible
   in
