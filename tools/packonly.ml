@@ -2,6 +2,8 @@
 
 module StringSet = Set.Make (String)
 
+let file_name = ".packonly"
+
 let parse text =
   String.split_on_char '\n' text
   |> List.fold_left

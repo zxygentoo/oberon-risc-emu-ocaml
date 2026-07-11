@@ -8,11 +8,6 @@ type candidate =
   ; module_ : string
   }
 
-let read_file_opt path =
-  try Some (In_channel.with_open_bin path In_channel.input_all) with
-  | Sys_error _ -> None
-;;
-
 (* ---- Scanning Oberon source (Latin-1, CR line endings) -------------------- *)
 
 (* The scanners are pure: each takes the source [b] and a position [i] and returns the
@@ -29,7 +24,8 @@ let is_ws c = c = ' ' || c = '\t' || c = '\n' || c = '\012' || c = '\r'
 (* Is the literal [str] at position [i] (no trivia skipped, no advance)? *)
 let looking_at b i str =
   let len = String.length str in
-  i + len <= String.length b && String.sub b i len = str
+  let rec eq k = k = len || (b.[i + k] = str.[k] && eq (k + 1)) in
+  i + len <= String.length b && eq 0
 ;;
 
 (* Skip whitespace and nesting [(* *)] comments, returning the first significant position. *)
@@ -178,9 +174,9 @@ let topo_sort nodes =
 ;;
 
 let resolve sources visible =
-  let manifest = Filename.concat sources ".packonly" in
+  let manifest = Filename.concat sources Packonly.file_name in
   let text =
-    match read_file_opt manifest with
+    match Fsutil.read_file_opt manifest with
     | Some t -> t
     | None ->
       failwith
@@ -210,7 +206,7 @@ let resolve sources visible =
          then file_of, nodes
          else (
            let src =
-             match read_file_opt (Filename.concat sources file) with
+             match Fsutil.read_file_opt (Filename.concat sources file) with
              | Some s -> s
              | None -> failwith (Printf.sprintf "can't read %s" file)
            in

@@ -40,18 +40,10 @@ exception Bad_image of string
 let bad msg = raise (Bad_image msg)
 
 (* Little-endian u32 at [off] as a non-negative OCaml int. *)
-let rd_u32 buf off =
-  Char.code buf.[off]
-  lor (Char.code buf.[off + 1] lsl 8)
-  lor (Char.code buf.[off + 2] lsl 16)
-  lor (Char.code buf.[off + 3] lsl 24)
-;;
+let rd_u32 buf off = Int32.to_int (String.get_int32_le buf off) land U32.mask
 
 (* Same four bytes reinterpreted as a signed 32-bit value (Rust's [rd_u32 as i32]). *)
-let rd_i32 buf off =
-  let u = rd_u32 buf off in
-  if u >= 0x8000_0000 then u - 0x1_0000_0000 else u
-;;
+let rd_i32 buf off = U32.to_i32 (rd_u32 buf off)
 
 (* Whether the four bytes at [off] are the directory mark, bounds-checked so an
    out-of-range [off] is simply [false] rather than an exception. *)
@@ -70,7 +62,7 @@ let from_bytes data =
   { data; base }
 ;;
 
-let open_image path = from_bytes (In_channel.with_open_bin path In_channel.input_all)
+let open_image path = from_bytes (Fsutil.read_file path)
 
 (* Byte offset of the 1024-byte sector at disk address [adr] within [data]. *)
 let sector_off img adr =

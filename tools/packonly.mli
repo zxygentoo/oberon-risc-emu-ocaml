@@ -4,6 +4,11 @@
 
 module StringSet : Set.S with type elt = string
 
+(** [".packonly"]: the manifest's file name at the root of a source tree — the one home
+    for the convention shared by the writer (extract-source) and the reader (the
+    builders). *)
+val file_name : string
+
 (** Parse [.packonly] text into the set of pack-only names. One name per line; text from
     the first ['#'] onward, and surrounding blanks, are ignored. *)
 val parse : string -> StringSet.t

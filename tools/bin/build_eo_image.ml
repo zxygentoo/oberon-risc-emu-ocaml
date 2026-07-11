@@ -2,9 +2,4 @@
     of [build-po-image] (same pipeline, EO seed). Port of the Rust [build-eo-image]
     binary. *)
 
-let () =
-  Oberon_tools.Builder_cli.run
-    Oberon_tools.Seed_eo.seed
-    ~name:"build-eo-image"
-    ~version:"0.1.0"
-;;
+let () = Oberon_tools.Tool_cli.run Oberon_tools.Seed.eo

@@ -45,31 +45,6 @@ let packonly_help =
 
 (* ---- Filesystem helpers --------------------------------------------------- *)
 
-let read_file path = In_channel.with_open_bin path In_channel.input_all
-
-let write_file path data =
-  Out_channel.with_open_bin path (fun oc -> output_string oc data)
-;;
-
-let rec mkdir_p dir =
-  if dir = "" || dir = Filename.current_dir_name || Sys.file_exists dir
-  then ()
-  else (
-    mkdir_p (Filename.dirname dir);
-    try Unix.mkdir dir 0o755 with
-    | Unix.Unix_error (Unix.EEXIST, _, _) -> ())
-;;
-
-let rec rm_rf path =
-  if Sys.file_exists path
-  then
-    if Sys.is_directory path
-    then (
-      Array.iter (fun name -> rm_rf (Filename.concat path name)) (Sys.readdir path);
-      Sys.rmdir path)
-    else Sys.remove path
-;;
-
 let mksubdir parent name =
   let p = Filename.concat parent name in
   Unix.mkdir p 0o755;
@@ -101,7 +76,7 @@ let bulk_delete dir ext =
 let sorted_visible dir =
   Sys.readdir dir
   |> Array.to_list
-  |> List.filter (fun n -> not (String.length n > 0 && n.[0] = '.'))
+  |> List.filter (fun n -> not (String.starts_with ~prefix:"." n))
   |> List.sort String.compare
 ;;
 
@@ -115,8 +90,10 @@ let files_with_ext dir ext =
 
 (* Write a toolchain seed ([name -> bytes]) flat into [dir]. *)
 let extract_toolchain toolchain dir =
-  mkdir_p dir;
-  List.iter (fun (name, bytes) -> write_file (Filename.concat dir name) bytes) toolchain
+  Fsutil.mkdir_p dir;
+  List.iter
+    (fun (name, bytes) -> Fsutil.write_file (Filename.concat dir name) bytes)
+    toolchain
 ;;
 
 (* ---- Driving the shim ----------------------------------------------------- *)
@@ -144,7 +121,7 @@ let compile modules cwd path =
 (* ---- The pipeline --------------------------------------------------------- *)
 
 let run_pipeline seed sources scratch visible plan =
-  mkdir_p scratch;
+  Fsutil.mkdir_p scratch;
   let toolchain = mksubdir scratch "toolchain" in
   extract_toolchain seed.toolchain toolchain;
   let norebo_dir = mksubdir scratch "norebo" in
@@ -157,7 +134,7 @@ let run_pipeline seed sources scratch visible plan =
   bulk_rename norebo_dir "rsc" "rsx";
   run_checked [ "CoreLinker.LinkSerial"; "Modules"; "InnerCore" ] norebo_dir [ toolchain ];
   bulk_rename norebo_dir "rsx" "rsc";
-  if read_file (Filename.concat norebo_dir "InnerCore") = seed.golden_inner_core
+  if Fsutil.read_file (Filename.concat norebo_dir "InnerCore") = seed.golden_inner_core
   then Printf.eprintf "  inner core reproduces the golden bootstrap\n%!"
   else
     Printf.eprintf
@@ -210,16 +187,18 @@ let build seed ~sources ~output =
       (Filename.get_temp_dir_name ())
       (Printf.sprintf "%s-%d" seed.name (Unix.getpid ()))
   in
-  (try rm_rf scratch with
-   | _ -> ());
+  let drop_scratch () =
+    try Fsutil.rm_rf scratch with
+    | _ -> ()
+  in
+  drop_scratch ();
   match run_pipeline seed sources scratch visible plan with
   | dsk ->
     (match Filename.dirname output with
      | "" | "." -> ()
-     | parent -> mkdir_p parent);
-    write_file output (read_file dsk);
-    (try rm_rf scratch with
-     | _ -> ())
+     | parent -> Fsutil.mkdir_p parent);
+    Fsutil.write_file output (Fsutil.read_file dsk);
+    drop_scratch ()
   | exception e ->
     Printf.eprintf "%s: build failed; intermediates left in %s\n%!" seed.name scratch;
     raise e

@@ -7,10 +7,8 @@ let () =
   match List.tl (Array.to_list Sys.argv) with
   | [ file ] when file <> "-h" && file <> "--help" ->
     (try
-       let bytes = In_channel.with_open_bin file In_channel.input_all in
        let out = file ^ ".txt" in
-       Out_channel.with_open_bin out (fun oc ->
-         output_string oc (Convert.from_oberon bytes));
+       Fsutil.write_file out (Convert.from_oberon (Fsutil.read_file file));
        Printf.eprintf "ob2txt: %s -> %s\n" file out
      with
      | Sys_error msg ->

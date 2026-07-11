@@ -4,15 +4,7 @@
 (* Latin-1 -> UTF-8: each byte becomes its code point U+00XX. *)
 let latin1_to_utf8 bytes =
   let buf = Buffer.create (String.length bytes) in
-  String.iter
-    (fun c ->
-       let b = Char.code c in
-       if b < 0x80
-       then Buffer.add_char buf c
-       else (
-         Buffer.add_char buf (Char.chr (0xC0 lor (b lsr 6)));
-         Buffer.add_char buf (Char.chr (0x80 lor (b land 0x3F)))))
-    bytes;
+  String.iter (fun c -> Buffer.add_utf_8_uchar buf (Uchar.of_char c)) bytes;
   Buffer.contents buf
 ;;
 
@@ -36,10 +28,15 @@ let utf8_to_latin1 s =
 let replace_all ~sub ~by s =
   let buf = Buffer.create (String.length s) in
   let n = String.length sub in
+  (* [sub] at [i]? In-place compare; callers keep [i + n] in range. *)
+  let matches i =
+    let rec eq k = k = n || (s.[i + k] = sub.[k] && eq (k + 1)) in
+    eq 0
+  in
   let rec go i =
     if i + n > String.length s
     then Buffer.add_substring buf s i (String.length s - i)
-    else if String.sub s i n = sub
+    else if matches i
     then (
       Buffer.add_string buf by;
       go (i + n))
