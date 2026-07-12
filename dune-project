@@ -14,7 +14,7 @@
  (description
   "An OCaml port of Peter De Wachter's oberon-risc-emu, an emulator for the\nRISC5 machine that runs Niklaus Wirth's Project Oberon (2013). Uses tsdl\n(SDL2) for the window, rendering, and input.")
  (depends
-  (ocaml (>= 4.08))
+  (ocaml (>= 5.1))
   tsdl
   (crunch :build)
   (qcheck-core :with-test)))

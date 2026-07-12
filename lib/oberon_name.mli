@@ -1,5 +1,5 @@
-(** Oberon file-name character rules, shared by the on-disk FS reader
-    ({!Oberon_tools.Image}) and the headless shim. Port of the Rust
+(** Oberon file-name character rules — the one home for the charset that both the
+    headless shim and the host tools' on-disk FS reader enforce. Port of the Rust
     [risc_core::name_char_ok]. *)
 
 (** [chars_ok s] holds when every character of [s] is legal at its position: an ASCII

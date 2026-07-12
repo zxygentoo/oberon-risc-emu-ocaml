@@ -11,7 +11,7 @@ individual instructions (see [Verifying correctness](#verifying-correctness)).
 
 ## Requirements
 
-OCaml ≥ 4.08, dune ≥ 3, a C compiler, and the SDL2 system library. SDL2 comes
+OCaml ≥ 5.1, dune ≥ 3, a C compiler, and the SDL2 system library. SDL2 comes
 from your OS package manager (e.g. `apt install libsdl2-dev`,
 `brew install sdl2`); the OCaml dependencies come from opam:
 

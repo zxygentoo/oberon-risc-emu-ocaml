@@ -12,7 +12,7 @@ homepage: "https://github.com/zxygentoo/oberon-risc-emu-ocaml"
 bug-reports: "https://github.com/zxygentoo/oberon-risc-emu-ocaml/issues"
 depends: [
   "dune" {>= "3.0"}
-  "ocaml" {>= "4.08"}
+  "ocaml" {>= "5.1"}
   "tsdl"
   "crunch" {build}
   "qcheck-core" {with-test}

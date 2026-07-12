@@ -4,8 +4,8 @@ These files are vendored from Peter De Wachter's
 [project-norebo](https://github.com/pdewacht/project-norebo) and from
 [Extended Oberon](https://github.com/andreaspirklbauer/Oberon-extended) (Andreas Pirklbauer),
 and embedded into the `build-po-image` / `build-eo-image` binaries (via
-`include_bytes!`) so they can build a bootable disk image without an external
-checkout.
+`ocaml-crunch`, see `tools/dune`) so they can build a bootable disk image
+without an external checkout.
 
 A build's *toolchain seed* is the host-side glue (Oberon modules adapted to talk to
 the host filesystem instead of FPGA hardware) plus the prebuilt objects that seed
@@ -29,7 +29,8 @@ eo/
 - **`po/glue/`**, **`eo/glue/`** — the system-specific glue (`Kernel`, `Oberon`,
   `CoreLinker`, plus EO's `Disk`). `eo/glue/Disk.Mod` is **not** embedded in
   `build-eo-image`; it is used only when regenerating the EO seed against the live
-  EO emulator (see [`../BUILD-EO-IMAGE.md`](../BUILD-EO-IMAGE.md)).
+  EO emulator (see the Rust port's
+  [`BUILD-EO-IMAGE.md`](https://github.com/zxygentoo/oberon-risc-emu-rs/blob/main/crates/host-tools/BUILD-EO-IMAGE.md)).
 - **`*/bootstrap/`** — prebuilt `.rsc` objects and the `InnerCore` image that seed
   the first compile. Each `InnerCore` is also the *golden* image its builder
   re-links during the build and checks byte-for-byte.

@@ -1,18 +1,18 @@
 (** The single definition of the RISC5 instruction encoding: one [instr] ADT,
     one [encode]/[decode], and the inlinable field accessors underneath both.
 
-    Stock OCaml, zero dependencies. Shared (in the DOOM arc) by the compiler
-    backend, the instr-level linker, the core tests, and — here — the emulator's
-    own decode. See SEAM.md §6 for the design companion.
+    Stock OCaml, zero dependencies — usable by anything that assembles or
+    inspects RISC5 words. In this repo that is the emulator's own decode, the
+    test suite's instruction builders, and the bench.
 
     Two layers, one truth:
 
     - accessors (Layer 1): [word -> int/bool], allocation-free, [@inline] in the
       [.ml]. The emulator's hot loop ({!Risc.single_step}) and [decode] are both
       built on these; they {e are} the bit-layout truth.
-    - ADT + codec (Layer 2): the faithful, encodable instruction, for the
-      compiler, disassembler, and tests. Never materialized in the emulator loop
-      (that is what keeps the loop non-allocating).
+    - ADT + codec (Layer 2): the faithful, encodable instruction, for
+      assemblers, disassemblers, and tests. Never materialized in the emulator
+      loop (that is what keeps the loop non-allocating).
 
     Encoding (Wirth RISC5), field-for-field against {!Risc.single_step}:
     {v
@@ -104,8 +104,8 @@ val cond_neg : word -> bool (* bit 27 : negate the condition *)
 (** {2 Layer 2: the faithful, concrete ADT — legal states only}
 
     The operand/size/target constructors {e imply} the q/u/v bits, so an illegal
-    encoding cannot be built; offsets are resolved ints (labels live above this
-    module, in the DOOM-repo linker). *)
+    encoding cannot be built; offsets are resolved ints (label resolution is a
+    caller's concern). *)
 
 type operand =
   | Reg of reg (* q = 0 : register operand R[c] *)

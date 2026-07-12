@@ -39,8 +39,8 @@ let store_load_word name addr value =
 ;;
 
 let () =
-  (* Word store/load across the widened decode: the 1 MB blob base, the top of
-     the DOOM himem window (14 MB), and the last RAM word. *)
+  (* Word store/load across the widened decode: the first himem word (1 MB), a
+     mid-himem word (just under 14 MB), and the last RAM word. *)
   store_load_word "stw_ldw_blob_base" 0x0010_0000 0xDEAD_BEEF;
   store_load_word "stw_ldw_14mb_top" 0x00DF_FFFC 0x1234_5678;
   store_load_word "stw_ldw_ram_top" 0x00FF_FFFC 0xCAFE_F00D;
