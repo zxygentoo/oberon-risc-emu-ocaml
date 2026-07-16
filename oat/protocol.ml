@@ -48,6 +48,11 @@ type response =
 
 let ok r = r.status = Ok
 
+(* u32 LE at [pos] as a non-negative int (the land masks Int32's sign extension). *)
+let u32 s pos = Int32.to_int (String.get_int32_le s pos) land 0xFFFFFFFF
+
+let not_unique_count r = if String.length r.payload < 4 then 0 else u32 r.payload 0
+
 type send = string -> response
 
 let byte n = String.make 1 (Char.chr n)
@@ -99,7 +104,7 @@ let read_response recv =
   let status = read_byte () in
   let len = Bytes.create 4 in
   recv len;
-  let length = Int32.to_int (Bytes.get_int32_le len 0) land 0xFFFFFFFF in
+  let length = u32 (Bytes.unsafe_to_string len) 0 in
   let payload = Bytes.create length in
   if length > 0 then recv payload;
   { status = status_of_byte status; payload = Bytes.unsafe_to_string payload }
@@ -129,7 +134,7 @@ module For_tests = struct
     let name = String.sub frame 3 nlen in
     let pos = ref (3 + nlen) in
     let blob () =
-      let len = Int32.to_int (String.get_int32_le frame !pos) land 0xFFFFFFFF in
+      let len = u32 frame !pos in
       pos := !pos + 4;
       let b = String.sub frame !pos len in
       pos := !pos + len;

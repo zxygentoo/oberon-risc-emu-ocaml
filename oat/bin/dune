@@ -1,5 +1,5 @@
-; The oat executable — a thin entry point over the oat library.
+; The oat executable — the process contract over the oat library.
 
 (executable
  (name oat)
- (libraries oat))
+ (libraries oat oberon_tools unix))

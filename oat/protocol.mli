@@ -30,6 +30,11 @@ type response =
 
 val ok : response -> bool
 
+(** The occurrence count carried by a [Not_unique] response (u32 LE payload); 0 when
+    the payload is absent or short. Kept here so the wire encoding never leaves this
+    module. *)
+val not_unique_count : response -> int
+
 (** The seam between the typed world and the fd world: send one encoded REQUEST frame,
     get back the decoded RESPONSE. {!Transport.send} is the real implementation;
     {!Retry.wrap} decorates it; Tools tests plug in an in-memory fake. *)

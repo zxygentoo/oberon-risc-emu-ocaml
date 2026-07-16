@@ -5,8 +5,9 @@
 > `skill/` copied (now under `oat/`) (path pass done), Makefile + `test/integration.sh` +
 > `.gitignore` in place; `make po-image` builds, `make test-po` passes 29/29,
 > `dune test` green, parity vs Rust oat spot-checked (one known divergence:
-> duplicate CLI options are last-wins here, clap rejects them; plus the
-> intentional text-fold divergence below). Unit tests are in:
+> duplicate CLI options are last-wins here, clap rejects them; the 0F1X header
+> strip applies only to GET payloads, where Rust strips in every from_oberon;
+> plus the intentional text-fold divergence below). Unit tests are in:
 > `test/test_oat_{protocol,retry,tools,transport,cli,error}.ml` (124 checks)
 > plus `strip_text_header` coverage in `test_convert.ml` — all green.
 > **Part 1 is complete.** Deferred to the final docs pass: README /

@@ -15,13 +15,10 @@ type t =
        before the next overruns it. See the oat CLI's [--char-delay-us]. *)
   }
 
-let poll_readable fd timeout =
-  let rec go () =
-    match Unix.select [ fd ] [] [] timeout with
-    | r, _, _ -> r <> []
-    | exception Unix.Unix_error (Unix.EINTR, _, _) -> go ()
-  in
-  go ()
+let rec poll_readable fd timeout =
+  match Unix.select [ fd ] [] [] timeout with
+  | r, _, _ -> r <> []
+  | exception Unix.Unix_error (Unix.EINTR, _, _) -> poll_readable fd timeout
 ;;
 
 (* Non-blocking: read and discard whatever is already buffered, so a stale or partial

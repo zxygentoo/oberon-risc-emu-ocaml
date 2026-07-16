@@ -2,12 +2,11 @@
 
 open Protocol
 
-(* Device text via the shared ob2txt/txt2ob transforms ({!Oberon_tools.Convert}); reads
-   additionally strip the 0F1X Texts header of files written by [Texts.Close].
+(* Device text via the shared ob2txt/txt2ob transforms ({!Oberon_tools.Convert}).
    Intentional divergence from the Rust oat, whose to_oberon sends raw UTF-8 bytes to
    the device: the Latin-1 fold makes non-ASCII writes round-trip on read. *)
 let to_oberon = Oberon_tools.Convert.to_oberon
-let from_oberon data = Oberon_tools.Convert.from_oberon (Oberon_tools.Convert.strip_text_header data)
+let from_oberon = Oberon_tools.Convert.from_oberon
 
 type compile_result =
   { output : string
@@ -17,70 +16,72 @@ type compile_result =
 type call_result =
   { log : string
   ; status : Protocol.status
+    (* Interpreted by {!call_outcome} alone — don't match on it elsewhere (the Rust
+       original keeps this field private to tools.rs). *)
   }
+
+let bad_status s = Error.fail (Error.Bad_status (status_byte s))
+let check_ok r = if not (ok r) then bad_status r.status
 
 let call_outcome r =
   match r.status with
   | Ok -> ()
   | Trapped -> Error.fail Error.Trapped
-  | s -> Error.fail (Error.Bad_status (status_byte s))
+  | s -> bad_status s
 ;;
 
 (* --- string helpers (Rust's str::matches / replacen / contains) --- *)
 
-(* Does [sub] occur at [i]? Callers keep [i + String.length sub] in range. *)
-let matches_at s ~sub i =
+(* First occurrence of non-empty [sub] at or after [from]: hop to each first-byte
+   candidate (String.index_from_opt is memchr), then compare in place. *)
+let find_sub ~sub ~from s =
   let n = String.length sub in
-  let rec eq k = k = n || (s.[i + k] = sub.[k] && eq (k + 1)) in
-  eq 0
+  let limit = String.length s - n in
+  let rec eq j k = k = n || (s.[j + k] = sub.[k] && eq j (k + 1)) in
+  let rec go i =
+    if i > limit
+    then None
+    else (
+      match String.index_from_opt s i sub.[0] with
+      | Some j when j <= limit -> if eq j 1 then Some j else go (j + 1)
+      | _ -> None)
+  in
+  go from
 ;;
 
 (* Non-overlapping occurrence count, Rust's [s.matches(sub).count()] — which for an
    empty pattern matches at every char boundary (len + 1). *)
 let count_occurrences ~sub s =
-  let n = String.length sub in
-  if n = 0
+  if sub = ""
   then String.length s + 1
   else (
-    let rec go i count =
-      if i + n > String.length s
-      then count
-      else if matches_at s ~sub i
-      then go (i + n) (count + 1)
-      else go (i + 1) count
+    let rec go from count =
+      match find_sub ~sub ~from s with
+      | None -> count
+      | Some i -> go (i + String.length sub) (count + 1)
     in
     go 0 0)
 ;;
 
-(* Rust's [s.replacen(sub, by, 1)]; an empty pattern matches at position 0. *)
+(* Rust's [s.replacen (sub, by, 1)]; an empty pattern matches at position 0. *)
 let replace_first ~sub ~by s =
-  let n = String.length sub in
-  let rec find i =
-    if i + n > String.length s
-    then None
-    else if matches_at s ~sub i
-    then Some i
-    else find (i + 1)
-  in
-  match find 0 with
-  | None -> s
-  | Some at -> String.sub s 0 at ^ by ^ String.sub s (at + n) (String.length s - at - n)
+  if sub = ""
+  then by ^ s
+  else (
+    match find_sub ~sub ~from:0 s with
+    | None -> s
+    | Some at ->
+      let n = String.length sub in
+      String.sub s 0 at ^ by ^ String.sub s (at + n) (String.length s - at - n))
 ;;
 
-let contains ~sub s = count_occurrences ~sub s > 0
+let contains ~sub s = sub = "" || find_sub ~sub ~from:0 s <> None
 
 (* --- internals --- *)
 
-(* Occurrence count from a [Not_unique] payload (u32 LE); 0 if absent. *)
-let le_count payload =
-  if String.length payload < 4
-  then 0
-  else Int32.to_int (String.get_int32_le payload 0) land 0xFFFFFFFF
-;;
-
 let call_log (send : Protocol.send) ~cmd ~args =
   let r = send (build_call ~cmd ~par:(to_oberon args)) in
-  if not (ok r) then Error.fail (Error.Bad_status (status_byte r.status));
+  check_ok r;
   from_oberon r.payload
 ;;
 
@@ -99,21 +100,24 @@ let parse_res log =
 let read_file (send : Protocol.send) path =
   let r = send (build_get ~name:path) in
   match r.status with
-  | Ok -> from_oberon r.payload
+  | Ok ->
+    (* Only a GET payload can carry the 0F1X header of a [Texts.Close]-written file,
+       so the strip lives here alone; logs and edit fragments never have one. (The
+       Rust oat strips inside every from_oberon — inert difference in practice.) *)
+    from_oberon (Oberon_tools.Convert.strip_text_header r.payload)
   | Not_found -> Error.fail (Error.File_not_found path)
-  | s -> Error.fail (Error.Bad_status (status_byte s))
+  | s -> bad_status s
 ;;
 
 let write_file (send : Protocol.send) ~path ~content =
-  let r = send (build_put ~name:path ~data:(to_oberon content)) in
-  if not (ok r) then Error.fail (Error.Bad_status (status_byte r.status))
+  check_ok (send (build_put ~name:path ~data:(to_oberon content)))
 ;;
 
 (* Fallback for fragments EDIT cannot carry: full read-modify-write through GET and
-   PUT. Fragments are normalized through the same LF/CR conversion the wire path
-   applies, so both paths match in the same space. *)
-let edit_file_via_rw (send : Protocol.send) ~path ~old ~new_ =
-  let old = from_oberon (to_oberon old) in
+   PUT. [old_dev] is the fragment already in device form; converting it back puts
+   both paths' matching in the same (host) space. *)
+let edit_file_via_rw (send : Protocol.send) ~path ~old_dev ~new_ =
+  let old = from_oberon old_dev in
   let content = read_file send path in
   let count = count_occurrences ~sub:old content in
   if count = 0 then Error.fail Error.Edit_not_found;
@@ -124,16 +128,16 @@ let edit_file_via_rw (send : Protocol.send) ~path ~old ~new_ =
 let edit_file (send : Protocol.send) ~path ~old ~new_ =
   let old_dev = to_oberon old in
   if old_dev = "" || String.length old_dev > edit_old_limit
-  then edit_file_via_rw send ~path ~old ~new_
+  then edit_file_via_rw send ~path ~old_dev ~new_
   else (
     let r = send (build_edit ~name:path ~old:old_dev ~new_:(to_oberon new_)) in
     match r.status with
     | Ok -> ()
     | Not_found -> Error.fail (Error.File_not_found path)
     | No_match -> Error.fail Error.Edit_not_found
-    | Not_unique -> Error.fail (Error.Edit_not_unique (le_count r.payload))
+    | Not_unique -> Error.fail (Error.Edit_not_unique (not_unique_count r))
     | Trapped -> Error.fail Error.Trapped
-    | s -> Error.fail (Error.Bad_status (status_byte s)))
+    | s -> bad_status s)
 ;;
 
 let delete_file send path =
@@ -171,7 +175,7 @@ let unload_module send name =
 let compile_module (send : Protocol.send) ~name ~new_symbol =
   let par = if new_symbol then name ^ "/s" else name in
   let r = send (build_call ~cmd:"ORP.Compile" ~par:(to_oberon par)) in
-  if not (ok r) then Error.fail (Error.Bad_status (status_byte r.status));
+  check_ok r;
   let output = from_oberon r.payload in
   { output; failed = contains ~sub:"compilation FAILED" output }
 ;;

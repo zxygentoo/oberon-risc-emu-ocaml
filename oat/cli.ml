@@ -105,38 +105,41 @@ let split_eq arg =
   else [ arg ]
 ;;
 
-(* The subcommand and its positional arguments; arity-checked here. [new_symbol] is
-   compile's flag, parsed anywhere but valid only there (as in the Rust CLI, where
-   -s lives on the compile subcommand alone). *)
+(* Parse failures unwind to [Invalid] through this local exception; the first raise
+   wins, as the Rust CLI's clap error did. *)
+exception Fail of string
+
+let fail msg = raise (Fail msg)
+
+(* The subcommand and its positional arguments, arity-checked. [new_symbol] carries
+   the spelling of a parsed [-s]/[--new-symbol] — compile's flag, accepted anywhere
+   on the line but valid only with compile (the Rust CLI scoped it via clap). *)
 let command_of ~new_symbol positionals =
-  let arity_err name = Result.Error (Printf.sprintf "wrong number of arguments for '%s'" name) in
-  let cmd =
+  let arity_err name = fail (Printf.sprintf "wrong number of arguments for '%s'" name) in
+  let command =
     match positionals with
-    | [] -> Result.Error "missing command"
-    | name :: args ->
-      (match name, args with
-       | "check", [] -> Result.Ok Check
-       | "read", [ path ] -> Result.Ok (Read path)
-       | "write", [ path ] -> Result.Ok (Write path)
-       | "edit", [ path; old; new_ ] -> Result.Ok (Edit { path; old; new_ })
-       | "delete", [ path ] -> Result.Ok (Delete path)
-       | "list-files", [] -> Result.Ok (List_files "")
-       | "list-files", [ prefix ] -> Result.Ok (List_files prefix)
-       | "list-modules", [] -> Result.Ok List_modules
-       | "compile", [ name ] -> Result.Ok (Compile { name; new_symbol })
-       | "load", [ name ] -> Result.Ok (Load name)
-       | "unload", [ name ] -> Result.Ok (Unload name)
-       | "call", [ cmd ] -> Result.Ok (Call { cmd; args = "" })
-       | "call", [ cmd; args ] -> Result.Ok (Call { cmd; args })
-       | ( ( "check" | "read" | "write" | "edit" | "delete" | "list-files"
-           | "list-modules" | "compile" | "load" | "unload" | "call" )
-         , _ ) -> arity_err name
-       | _ -> Result.Error (Printf.sprintf "unrecognized command %S" name))
+    | [] -> fail "missing command"
+    | [ "check" ] -> Check
+    | [ "read"; path ] -> Read path
+    | [ "write"; path ] -> Write path
+    | [ "edit"; path; old; new_ ] -> Edit { path; old; new_ }
+    | [ "delete"; path ] -> Delete path
+    | [ "list-files" ] -> List_files ""
+    | [ "list-files"; prefix ] -> List_files prefix
+    | [ "list-modules" ] -> List_modules
+    | [ "compile"; name ] -> Compile { name; new_symbol = new_symbol <> None }
+    | [ "load"; name ] -> Load name
+    | [ "unload"; name ] -> Unload name
+    | [ "call"; cmd ] -> Call { cmd; args = "" }
+    | [ "call"; cmd; args ] -> Call { cmd; args }
+    | (( "check" | "read" | "write" | "edit" | "delete" | "list-files" | "list-modules"
+       | "compile" | "load" | "unload" | "call" ) as name)
+      :: _ -> arity_err name
+    | name :: _ -> fail (Printf.sprintf "unrecognized command %S" name)
   in
-  match cmd with
-  | Result.Ok (Compile _) | Result.Error _ -> cmd
-  | Result.Ok _ when new_symbol -> Result.Error "unexpected argument '--new-symbol'"
-  | ok -> ok
+  match command, new_symbol with
+  | Compile _, _ | _, None -> command
+  | _, Some spelling -> fail (Printf.sprintf "unexpected argument '%s'" spelling)
 ;;
 
 let parse_argv raw_args =
@@ -147,12 +150,10 @@ let parse_argv raw_args =
   and serial = ref None
   and serial_in = ref None
   and serial_out = ref None
-  and new_symbol = ref false
+  and new_symbol = ref None
   and positionals = ref []
   and help = ref false
-  and version = ref false
-  and err = ref None in
-  let fail msg = if !err = None then err := Some msg in
+  and version = ref false in
   let float_opt name r v =
     match float_of_string_opt v with
     | Some x -> r := x
@@ -163,76 +164,64 @@ let parse_argv raw_args =
     | Some n when n >= 0 -> r := n
     | _ -> fail (Printf.sprintf "invalid %s %S" name v)
   in
+  (* One entry per value-taking option keeps the consuming arm and the
+     requires-a-value arm below in sync. *)
+  let value_opts =
+    [ "--timeout", float_opt "--timeout" timeout
+    ; "--baud", uint_opt "--baud" baud
+    ; "--char-delay-us", uint_opt "--char-delay-us" char_delay_us
+    ; "--retries", uint_opt "--retries" retries
+    ; "--serial", (fun v -> serial := Some v)
+    ; "--serial-in", (fun v -> serial_in := Some v)
+    ; "--serial-out", (fun v -> serial_out := Some v)
+    ]
+  in
   let rec loop = function
     | [] -> ()
-    | _ when !err <> None -> ()
     | "--" :: rest -> positionals := List.rev_append rest !positionals
-    | "--timeout" :: v :: rest ->
-      float_opt "--timeout" timeout v;
+    | o :: v :: rest when List.mem_assoc o value_opts ->
+      (List.assoc o value_opts) v;
       loop rest
-    | "--baud" :: v :: rest ->
-      uint_opt "--baud" baud v;
-      loop rest
-    | "--char-delay-us" :: v :: rest ->
-      uint_opt "--char-delay-us" char_delay_us v;
-      loop rest
-    | "--retries" :: v :: rest ->
-      uint_opt "--retries" retries v;
-      loop rest
-    | "--serial" :: v :: rest ->
-      serial := Some v;
-      loop rest
-    | "--serial-in" :: v :: rest ->
-      serial_in := Some v;
-      loop rest
-    | "--serial-out" :: v :: rest ->
-      serial_out := Some v;
-      loop rest
-    | ("-s" | "--new-symbol") :: rest ->
-      new_symbol := true;
+    | (("-s" | "--new-symbol") as spelling) :: rest ->
+      new_symbol := Some spelling;
       loop rest
     | ("--help" | "-h") :: _ -> help := true
     | "--version" :: _ -> version := true
-    | (( "--timeout" | "--baud" | "--char-delay-us" | "--retries" | "--serial"
-       | "--serial-in" | "--serial-out" ) as o)
-      :: [] -> fail (Printf.sprintf "option %s requires a value" o)
+    | [ o ] when List.mem_assoc o value_opts ->
+      fail (Printf.sprintf "option %s requires a value" o)
     | opt :: _ when String.length opt > 1 && opt.[0] = '-' ->
       fail (Printf.sprintf "unknown option %s" opt)
     | arg :: rest ->
       positionals := arg :: !positionals;
       loop rest
   in
-  loop (List.concat_map split_eq raw_args);
-  if !help
-  then Help
-  else if !version
-  then Version
-  else (
-    (* The serial forms are exclusive and paired, as clap enforced in the Rust CLI. *)
-    let serial_form =
-      match !serial, !serial_in, !serial_out with
-      | Some _, None, None -> Result.Ok (Option.map (fun p -> Device p) !serial)
-      | None, Some fifo_in, Some fifo_out -> Result.Ok (Some (Fifos { fifo_in; fifo_out }))
-      | None, None, None -> Result.Ok None
-      | Some _, _, _ ->
-        Result.Error "--serial cannot be combined with --serial-in/--serial-out"
-      | None, Some _, None -> Result.Error "--serial-in requires --serial-out"
-      | None, None, Some _ -> Result.Error "--serial-out requires --serial-in"
-    in
-    match !err, serial_form with
-    | Some e, _ | None, Result.Error e -> Invalid e
-    | None, Result.Ok serial ->
-      (match command_of ~new_symbol:!new_symbol (List.rev !positionals) with
-       | Result.Error e -> Invalid e
-       | Result.Ok command ->
-         Config
-           { timeout = !timeout
-           ; baud = !baud
-           ; char_delay_us = !char_delay_us
-           ; retries = !retries
-           ; serial
-           ; command
-           }))
+  try
+    loop (List.concat_map split_eq raw_args);
+    if !help
+    then Help
+    else if !version
+    then Version
+    else (
+      (* The serial forms are exclusive and paired, as clap enforced in the Rust CLI. *)
+      let serial =
+        match !serial, !serial_in, !serial_out with
+        | Some p, None, None -> Some (Device p)
+        | None, Some fifo_in, Some fifo_out -> Some (Fifos { fifo_in; fifo_out })
+        | None, None, None -> None
+        | Some _, _, _ -> fail "--serial cannot be combined with --serial-in/--serial-out"
+        | None, Some _, None -> fail "--serial-in requires --serial-out"
+        | None, None, Some _ -> fail "--serial-out requires --serial-in"
+      in
+      Config
+        { timeout = !timeout
+        ; baud = !baud
+        ; char_delay_us = !char_delay_us
+        ; retries = !retries
+        ; serial
+        ; command = command_of ~new_symbol:!new_symbol (List.rev !positionals)
+        })
+  with
+  | Fail e -> Invalid e
 ;;
 
 (* --- subcommand handlers --- *)
@@ -264,7 +253,12 @@ let dispatch send = function
   | Check -> cmd_check send
   | Read path -> print_string (Tools.read_file send path)
   | Write path ->
-    let content = In_channel.input_all In_channel.stdin in
+    (* Host I/O failures become Error.Io at the raise site, so Error.exit_code
+       stays the sole owner of the exit-code partition. *)
+    let content =
+      try In_channel.input_all In_channel.stdin with
+      | Sys_error m -> Error.fail (Error.Io m)
+    in
     Tools.write_file send ~path ~content;
     Printf.printf "ok wrote %s (%d bytes)\n" path (String.length content)
   | Edit { path; old; new_ } ->
@@ -314,28 +308,4 @@ let run cfg =
       Transport.open_fifos ~in_path:fifo_in ~out_path:fifo_out ~timeout, 0
   in
   dispatch (Retry.wrap ~retries (Transport.send transport)) cfg.command
-;;
-
-let main () =
-  match parse_argv (List.tl (Array.to_list Sys.argv)) with
-  | Help ->
-    print_string usage;
-    exit 0
-  | Version ->
-    Printf.printf "oat %s\n" Oberon_tools.Tool_cli.version;
-    exit 0
-  | Invalid msg ->
-    Printf.eprintf "oat: error: %s\nFor more information, try '--help'.\n" msg;
-    exit 2
-  | Config cfg ->
-    (try run cfg with
-     | Error.Error e ->
-       Printf.eprintf "oat: error: %s\n" (Error.message e);
-       exit (Error.exit_code e)
-     | Sys_error m ->
-       Printf.eprintf "oat: error: %s\n" m;
-       exit 2
-     | Unix.Unix_error (e, fn, arg) ->
-       Printf.eprintf "oat: error: %s (%s %s)\n" (Unix.error_message e) fn arg;
-       exit 2)
 ;;

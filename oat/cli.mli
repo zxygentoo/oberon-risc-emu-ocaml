@@ -1,6 +1,7 @@
-(** The oat command-line surface (port of oat's [cli.rs] + [main.rs]): argument
-    parsing, the per-subcommand handlers, and the dispatch from parsed arguments into
-    {!Tools} calls. *)
+(** The oat command-line surface (port of oat's [cli.rs]): argument parsing, the
+    per-subcommand handlers, and the dispatch from parsed arguments into {!Tools}
+    calls. The process contract — exit codes, the "oat: error: " prefix — lives in
+    the executable ([oat/bin/oat.ml]), as [main.rs] does in the Rust oat. *)
 
 (** The serial connection, one form required (reported at open time, not parse time,
     matching the Rust CLI). *)
@@ -59,7 +60,3 @@ val usage : string
 (** Open the transport, wrap it in the retry policy, run the subcommand.
     @raise Error.Error on any tool- or transport-level failure. *)
 val run : config -> unit
-
-(** The whole main: parse [Sys.argv], run, report errors with the "oat: error: "
-    prefix, and exit with the documented code (0 / 1 / 2). *)
-val main : unit -> unit

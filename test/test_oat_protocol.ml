@@ -83,5 +83,10 @@ let () =
   let r = read_with (encode_response Protocol.Not_unique "\x02\x00\x00\x00") in
   check "decode_inverts_encode_status" (r.Protocol.status = Protocol.Not_unique);
   eqs "decode_inverts_encode_payload" r.Protocol.payload "\x02\x00\x00\x00";
+  eq "not_unique_count" (Protocol.not_unique_count r) 2;
+  eq
+    "not_unique_count_short_payload"
+    (Protocol.not_unique_count { Protocol.status = Protocol.Not_unique; payload = "" })
+    0;
   summary "oat protocol checks"
 ;;
