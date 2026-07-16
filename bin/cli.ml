@@ -17,7 +17,9 @@ let usage =
   \  --headless            Run without a window; exits after --frames, else runs until \
    killed\n\
   \  --frames N            Run N deterministic frames, print FNV-1a hashes, then exit \
-   (headless only)\n"
+   (headless only)\n\
+  \  --shot-frames N,N,..  Save the framebuffer as risc-shotNNNN.png after each listed \
+   frame (with --frames)\n"
 ;;
 
 (** Outcome of CLI parsing; the caller owns printing and exiting. *)
@@ -40,6 +42,7 @@ and config =
   ; boot_from_serial : bool
   ; headless : bool
   ; frames : int option
+  ; shot_frames : int list
   ; disk_image : string option
   }
 
@@ -60,6 +63,15 @@ let parse_size s =
      | Some w, Some h -> Ok (w, h)
      | None, _ -> Error (Printf.sprintf "invalid width in --size %S" s)
      | _, None -> Error (Printf.sprintf "invalid height in --size %S" s))
+;;
+
+(* "N,N,..." -> sorted, deduped, 1-based frame numbers. *)
+let parse_shot_frames s =
+  let parts = String.split_on_char ',' s in
+  let nums = List.filter_map (fun p -> int_of_string_opt (String.trim p)) parts in
+  if List.length nums = List.length parts && List.for_all (fun n -> n >= 1) nums
+  then Ok (List.sort_uniq compare nums)
+  else Error (Printf.sprintf "invalid --shot-frames %S, expected FRAME,FRAME,..." s)
 ;;
 
 (* Split [--opt=value] into [--opt; value] so the parser only handles [--opt value]. *)
@@ -84,6 +96,7 @@ let parse_argv raw_args =
   and boot_from_serial = ref false
   and headless = ref false
   and frames = ref None
+  and shot_frames = ref []
   and disk = ref None
   and help = ref false
   and err = ref None in
@@ -116,6 +129,11 @@ let parse_argv raw_args =
        | Some n -> frames := Some n
        | None -> fail (Printf.sprintf "invalid --frames %S" v));
       loop rest
+    | "--shot-frames" :: v :: rest ->
+      (match parse_shot_frames v with
+       | Ok l -> shot_frames := l
+       | Error e -> fail e);
+      loop rest
     | "--fullscreen" :: rest ->
       fullscreen := true;
       loop rest
@@ -129,7 +147,8 @@ let parse_argv raw_args =
       headless := true;
       loop rest
     | ("--help" | "-h") :: _ -> help := true
-    | (("--zoom" | "--mem" | "--size" | "--serial-in" | "--serial-out" | "--frames") as o)
+    | (( "--zoom" | "--mem" | "--size" | "--serial-in" | "--serial-out" | "--frames"
+       | "--shot-frames" ) as o)
       :: [] -> fail (Printf.sprintf "option %s requires a value" o)
     | opt :: _ when String.starts_with ~prefix:"-" opt ->
       fail (Printf.sprintf "unknown option %s" opt)
@@ -162,6 +181,8 @@ let parse_argv raw_args =
            For more information, try '--help'."
       else if !frames <> None && not !headless
       then Invalid "--frames requires --headless"
+      else if !shot_frames <> [] && !frames = None
+      then Invalid "--shot-frames requires --frames"
       else
         Config
           { width = !width
@@ -176,6 +197,11 @@ let parse_argv raw_args =
           ; boot_from_serial = !boot_from_serial
           ; headless = !headless
           ; frames = !frames
+          ; shot_frames =
+              (* Shots past the end of the run can never fire; drop them here. *)
+              (match !frames with
+               | Some f -> List.filter (fun n -> n <= f) !shot_frames
+               | None -> [])
           ; disk_image = !disk
           })
 ;;

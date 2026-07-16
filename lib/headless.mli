@@ -16,8 +16,10 @@ val fps : int
 val standard_machine : ?disk:string -> Clipboard.host -> Risc.t
 
 (** Advance the machine by [frames], driving the fixed 60 Hz synthetic clock but
-    independent of wall time, so the run is reproducible. *)
-val run_frames : Risc.t -> int -> unit
+    independent of wall time, so the run is reproducible. [on_frame] observes the
+    machine after each frame (1-based frame number, matching the golden
+    checkpoints); a pure observer keeps the run deterministic. *)
+val run_frames : ?on_frame:(int -> unit) -> Risc.t -> int -> unit
 
 (** FNV-1a of the active framebuffer (the visible [fb_width * fb_height] words). *)
 val framebuffer_hash : Risc.t -> int64

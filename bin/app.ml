@@ -61,6 +61,8 @@ let map_action ~down ~keycode ~kmod =
   then `Toggle_fullscreen
   else if down && keycode = K.f && has Kmod.gui && has Kmod.shift
   then `Toggle_fullscreen
+  else if down && keycode = K.f10
+  then `Screenshot
   else if keycode = K.lalt
   then `Fake_mouse2 (* both press and release *)
   else `Oberon_input
@@ -106,7 +108,17 @@ let run_headless (cfg : Cli.config) =
         | None -> ())
       (fun () ->
          let risc = build_machine cfg scratch RC.Clipboard.noop_host in
-         RC.Headless.run_frames risc frames;
+         (* cfg.shot_frames is ascending and deduped, so one head comparison per
+            frame suffices; capture is a pure read, leaving the hashes intact. *)
+         let shots = ref cfg.shot_frames in
+         let on_frame f =
+           match !shots with
+           | n :: rest when n = f ->
+             shots := rest;
+             Printf.printf "screenshot: %s\n" (Screenshot.save risc)
+           | _ -> ()
+         in
+         RC.Headless.run_frames risc frames ~on_frame;
          let words = Core.fb_width risc * Core.fb_height risc in
          let rec count_blank i n =
            if i = words
@@ -223,6 +235,8 @@ let run_gui (cfg : Cli.config) =
                 (if !fullscreen
                  then Sdl.Window.fullscreen_desktop
                  else Sdl.Window.windowed))
+         | `Screenshot ->
+           Printf.printf "screenshot: %s\n%!" (Screenshot.save risc)
          | `Fake_mouse2 -> Core.mouse_button risc 2 down
          | `Oberon_input ->
            let bytes = Ps2.encode ~scancode ~make:down ~kmod in

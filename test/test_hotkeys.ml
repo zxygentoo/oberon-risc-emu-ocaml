@@ -29,6 +29,10 @@ let () =
     (act ~down:true ~keycode:Sdl.K.f ~kmod:(Sdl.Kmod.lgui lor Sdl.Kmod.lshift)
      = `Toggle_fullscreen);
   check "plain_f_is_input" (act ~down:true ~keycode:Sdl.K.f ~kmod:none = `Oberon_input);
+  check "f10_screenshot" (act ~down:true ~keycode:Sdl.K.f10 ~kmod:none = `Screenshot);
+  check
+    "f10_release_is_input"
+    (act ~down:false ~keycode:Sdl.K.f10 ~kmod:none = `Oberon_input);
   (* Left Alt is the fake middle button on both press and release; releases of
      anything else fall through to Oberon input. *)
   check

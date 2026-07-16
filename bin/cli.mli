@@ -22,6 +22,8 @@ and config =
   ; boot_from_serial : bool
   ; headless : bool
   ; frames : int option
+  ; shot_frames : int list
+    (** Ascending, deduped, all within [frames]; capture after each listed frame. *)
   ; disk_image : string option
   }
 

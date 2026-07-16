@@ -16,5 +16,6 @@
  (depends
   (ocaml (>= 5.1))
   tsdl
+  imagelib
   (crunch :build)
   (qcheck-core :with-test)))

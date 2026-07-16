@@ -15,10 +15,11 @@
  (deps data/fp_vectors.txt ../DiskImage/Oberon-2020-08-18.dsk))
 
 ; Frontend tests (the testable bin library + tsdl; no SDL_Init at runtime).
+; test_screenshot decodes captures back through imagelib's own PNG reader.
 
 (tests
- (names test_ps2 test_cli test_scale test_hotkeys)
- (libraries oberon_frontend risc_core tsdl test_harness))
+ (names test_ps2 test_cli test_scale test_hotkeys test_screenshot)
+ (libraries oberon_frontend risc_core tsdl imagelib test_harness))
 
 ; Instruction-codec tests (QCheck) — the shared Risc5_isa encode/decode + the
 ; differential check of encode against the hand-rolled golden encoders.

@@ -10,8 +10,12 @@
 > plus the intentional text-fold divergence below). Unit tests are in:
 > `test/test_oat_{protocol,retry,tools,transport,cli,error}.ml` (124 checks)
 > plus `strip_text_header` coverage in `test_convert.ml` — all green.
-> **Part 1 is complete.** Deferred to the final docs pass: README /
-> test/README updates. Part 2 (screenshots) not started. Nothing committed.
+> **Part 1 is complete** (committed: d6cb074 port, 49530d1 Buffer refactor,
+> db153c5 simplify pass). **Part 2 (screenshots) is implemented and verified**:
+> bin/screenshot.ml + `--shot-frames` (via a `?on_frame` hook on
+> Headless.run_frames) + F10; goldens byte-identical; boot capture visually
+> confirmed. Remaining: the final docs pass (README options/hotkeys tables,
+> oat/agent-image section, test/README), then retire this file.
 
 Goal: make this emulator a self-contained debug/test target for coding agents.
 Two-part job, agreed 2026-07-16. This file is the working plan so a fresh

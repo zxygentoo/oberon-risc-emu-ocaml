@@ -21,12 +21,15 @@ let standard_machine ?disk host =
 ;;
 
 (** Advance [risc] by [frames], driving the fixed 60 Hz synthetic clock the
-    frontend uses but independent of wall time, so the run is reproducible. *)
-let run_frames risc frames =
+    frontend uses but independent of wall time, so the run is reproducible.
+    [on_frame] observes the machine after each frame (1-based; used by
+    [--shot-frames]); it must not perturb the state if determinism matters. *)
+let run_frames ?(on_frame = fun _ -> ()) risc frames =
   let frame_ms = 1000 / fps in
   for frame = 0 to frames - 1 do
     Risc.set_time risc (U32.wrap (frame * frame_ms));
-    Risc.run risc (cpu_hz / fps)
+    Risc.run risc (cpu_hz / fps);
+    on_frame (frame + 1)
   done
 ;;
 

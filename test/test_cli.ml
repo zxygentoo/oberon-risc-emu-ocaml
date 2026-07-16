@@ -45,6 +45,28 @@ let () =
   check "frames" (c.Cli.frames = Some 42);
   check "headless_disk" (c.Cli.disk_image = Some "disk.dsk");
   check "headless_unbounded" ((ok [ "--headless"; "disk.dsk" ]).Cli.frames = None);
+  (* --shot-frames: sorted + deduped, values past --frames dropped, and only
+     meaningful under --frames. *)
+  check
+    "shot_frames_sorted_deduped"
+    ((ok [ "--headless"; "--frames"; "100"; "--shot-frames"; "50,10,50"; "d.dsk" ])
+       .Cli.shot_frames
+     = [ 10; 50 ]);
+  check
+    "shot_frames_past_end_dropped"
+    ((ok [ "--headless"; "--frames"; "100"; "--shot-frames"; "60,200"; "d.dsk" ])
+       .Cli.shot_frames
+     = [ 60 ]);
+  check "shot_frames_default_empty" ((ok [ "d.dsk" ]).Cli.shot_frames = []);
+  check
+    "shot_frames_requires_frames"
+    (is_err [ "--headless"; "--shot-frames"; "5"; "d.dsk" ]);
+  check
+    "shot_frames_invalid_entry"
+    (is_err [ "--headless"; "--frames"; "10"; "--shot-frames"; "5,x"; "d.dsk" ]);
+  check
+    "shot_frames_zero_invalid"
+    (is_err [ "--headless"; "--frames"; "10"; "--shot-frames"; "0"; "d.dsk" ]);
   (* Error cases. *)
   check "frames_requires_headless" (is_err [ "--frames"; "1"; "d.dsk" ]);
   check "unknown_option" (is_err [ "--bogus"; "d.dsk" ]);

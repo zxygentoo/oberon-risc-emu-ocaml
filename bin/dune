@@ -3,9 +3,9 @@
 
 (library
  (name oberon_frontend)
- (modules ps2 render cli sdl_clipboard app)
+ (modules ps2 render cli sdl_clipboard screenshot app)
  (wrapped false)
- (libraries risc_core tsdl unix))
+ (libraries risc_core tsdl imagelib unix))
 
 (executable
  (name risc)
