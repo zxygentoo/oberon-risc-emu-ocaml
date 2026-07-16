@@ -11,18 +11,16 @@ module Core = Risc_core.Risc
 let cpu_hz = RC.Headless.cpu_hz
 let fps = RC.Headless.fps
 
-(* The LED device for --leds: logs the 8-bit state to stdout (port of show_leds). *)
+(* The LED device for --leds: logs the 8-bit state to stdout (port of show_leds).
+   Bit 7 prints first: "LEDs: 7--4--1-" for 0x92. *)
 let led_logger : RC.Io.led =
   { led_write =
       (fun value ->
-        let b = Buffer.create 16 in
-        Buffer.add_string b "LEDs: ";
-        for i = 7 downto 0 do
-          Buffer.add_char
-            b
-            (if value land (1 lsl i) <> 0 then Char.chr (Char.code '0' + i) else '-')
-        done;
-        print_endline (Buffer.contents b))
+        let led i =
+          let bit = 7 - i in
+          if value land (1 lsl bit) <> 0 then Char.chr (Char.code '0' + bit) else '-'
+        in
+        print_endline ("LEDs: " ^ String.init 8 led))
   }
 ;;
 

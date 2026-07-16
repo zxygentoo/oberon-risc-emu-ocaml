@@ -6,9 +6,6 @@
 
 open Tsdl
 
-(** Maximum number of bytes emitted for a single key event. *)
-let max_ps2_code_len = 8
-
 type ktype =
   | Normal
   | Extended
@@ -132,64 +129,32 @@ let () =
     [ps2_encode]). [kmod] supplies the live shift state for the keypad-`/` hack.
     Returns the emitted bytes (possibly empty). *)
 let encode ~scancode ~make ~kmod =
-  let buf = Buffer.create max_ps2_code_len in
-  let push b = Buffer.add_char buf (Char.chr b) in
-  (match Hashtbl.find_opt keymap scancode with
-   | None -> ()
-   | Some (code, ty) ->
-     (match ty with
-      | Normal ->
-        if not make then push 0xF0;
-        push code
-      | Extended ->
-        push 0xE0;
-        if not make then push 0xF0;
-        push code
-      | Numlock_hack ->
-        (* This assumes Num Lock is always active. *)
-        if make
-        then (
-          push 0xE0;
-          push 0x12;
-          push 0xE0;
-          push code (* fake shift press *))
-        else (
-          push 0xE0;
-          push 0xF0;
-          push code;
-          push 0xE0;
-          push 0xF0;
-          push 0x12 (* fake shift release *))
-      | Shift_hack ->
-        let lshift = kmod land Sdl.Kmod.lshift <> 0 in
-        let rshift = kmod land Sdl.Kmod.rshift <> 0 in
-        if make
-        then (
-          (* fake shift release *)
-          if lshift
-          then (
-            push 0xE0;
-            push 0xF0;
-            push 0x12);
-          if rshift
-          then (
-            push 0xE0;
-            push 0xF0;
-            push 0x59);
-          push 0xE0;
-          push code)
-        else (
-          push 0xE0;
-          push 0xF0;
-          push code;
-          (* fake shift press *)
-          if rshift
-          then (
-            push 0xE0;
-            push 0x59);
-          if lshift
-          then (
-            push 0xE0;
-            push 0x12))));
-  Buffer.to_bytes buf
+  let codes =
+    match Hashtbl.find_opt keymap scancode with
+    | None -> []
+    | Some (code, ty) ->
+      (match ty with
+       | Normal -> if make then [ code ] else [ 0xF0; code ]
+       | Extended -> if make then [ 0xE0; code ] else [ 0xE0; 0xF0; code ]
+       | Numlock_hack ->
+         (* This assumes Num Lock is always active. *)
+         if make
+         then [ 0xE0; 0x12; 0xE0; code ] (* fake shift press, then the key *)
+         else [ 0xE0; 0xF0; code; 0xE0; 0xF0; 0x12 ] (* key break, fake shift release *)
+       | Shift_hack ->
+         let lshift = kmod land Sdl.Kmod.lshift <> 0 in
+         let rshift = kmod land Sdl.Kmod.rshift <> 0 in
+         if make
+         then
+           (* fake shift releases, then the key *)
+           (if lshift then [ 0xE0; 0xF0; 0x12 ] else [])
+           @ (if rshift then [ 0xE0; 0xF0; 0x59 ] else [])
+           @ [ 0xE0; code ]
+         else
+           (* key break, then fake shift presses *)
+           [ 0xE0; 0xF0; code ]
+           @ (if rshift then [ 0xE0; 0x59 ] else [])
+           @ if lshift then [ 0xE0; 0x12 ] else [])
+  in
+  Bytes.of_seq (Seq.map Char.chr (List.to_seq codes))
 ;;
