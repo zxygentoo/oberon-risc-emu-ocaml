@@ -20,10 +20,10 @@ opam install . --deps-only --with-test
 ```
 
 This reads `oberon-risc-emu.opam` (generated from `dune-project`) and pulls in
-`tsdl` — which binds SDL2 — plus `crunch`, which embeds the host tools' toolchain
-assets at build time, and `qcheck-core`, which drives the property tests. The C
-compiler (already needed by `tsdl`) also builds the vendored C reference for the
-`@cosim` tests.
+`tsdl` — which binds SDL2 — plus `imagelib`, which encodes screenshots as PNG,
+`crunch`, which embeds the host tools' toolchain assets at build time, and
+`qcheck-core`, which drives the property tests. The C compiler (already needed
+by `tsdl`) also builds the vendored C reference for the `@cosim` tests.
 
 ## Build & run
 
@@ -53,6 +53,7 @@ Ported from the C frontend, plus `--headless`/`--frames` from the Rust port:
 | `--serial-in FILE` / `--serial-out FILE` | Use a raw host serial line instead of PCLink |
 | `--headless` | Run without a window (until killed, or `--frames` frames) |
 | `--frames N` | Run N deterministic frames, print FNV-1a hashes, then exit (headless only) |
+| `--shot-frames N,N,..` | Save the framebuffer as `risc-shotNNNN.png` after each listed frame (with `--frames`) |
 
 ### Controls
 
@@ -64,6 +65,7 @@ the middle button. Keyboard shortcuts:
 | `Alt`+`F4` | Quit |
 | `F12`, or `Ctrl`+`Shift`+`Del` | Reset the machine |
 | `F11`, or `Alt`+`Enter` | Toggle full-screen |
+| `F10` | Save a screenshot (`risc-shotNNNN.png` in the working directory) |
 
 ## Host tools
 
@@ -87,6 +89,45 @@ the Oberon compiler headless through a port of project-norebo's shim runtime,
 with the bootstrap toolchain embedded in the binary. Both directions are
 verified byte-identical against the Rust tools: extracted trees compare equal,
 and built images hash identically.
+
+## Driving a live system (oat)
+
+`oat` — ported from [oberon-agent][oa] — drives a *running* Oberon over the
+serial line: read/write/edit files, compile, load/unload modules, run any
+command. It is a stateless CLI: each invocation opens the line (an emulator
+FIFO pair, or a real FPGA's UART via `--serial`), performs one request against
+`AgentTool.Mod` on the device, prints the result, and exits. Everything lives
+under [`oat/`](oat/): the client, the on-system modules (`oat/Mod/`), and the
+agent-facing rules for driving it from a coding agent
+([`oat/skill/`](oat/skill/oberon-agent/SKILL.md)).
+
+The stock images don't carry the agent modules; the root `Makefile` builds
+agent-ready images with this repo's own toolchain (build-time system deps:
+`make`, `patch`, and `curl`/`wget` for the EO download):
+
+```sh
+make po-image                        # DiskImage/ProjectOberon.dsk, fully offline
+make eo-image                        # DiskImage/ExtendedOberon.dsk (pinned download)
+
+mkfifo /tmp/p.in /tmp/p.out          # once
+make po-emu                          # boot the image on the FIFO pair, windowed
+```
+
+then, from another shell:
+
+```sh
+OAT="_build/default/oat/bin/oat.exe --serial-in /tmp/p.in --serial-out /tmp/p.out"
+$OAT check                           # ok: Project Oberon 2013 (round-trip 1ms)
+$OAT write Stars.Mod < Stars.Mod     # push source
+$OAT compile Stars.Mod               # ORP.Compile; compiler log -> stdout
+$OAT call Stars.Show                 # run it; the Oberon.Log delta -> stdout
+```
+
+Swap `make po-emu` for `risc --headless --serial-in ... --serial-out ...` and
+the same loop runs without a window; re-run deterministically with
+`--shot-frames` to see the screen. `make test-po` / `make test-eo` run a live
+battery of the full oat surface against a booted image (see
+[`test/README.md`](test/README.md)).
 
 ## Verifying correctness
 
@@ -156,9 +197,11 @@ dune exec bin/risc.exe -- --headless --frames 60 DiskImage/Oberon-2020-08-18.dsk
 ## Scope
 
 This port covers the emulator — the `risc_core` machine and the tsdl frontend —
-the differential-lockstep harness, and the Rust workspace's host tools: the text
+the differential-lockstep harness, the Rust workspace's host tools (the text
 converters, the source extractor, and the two image builders with the headless
-shim runtime they drive (see [Host tools](#host-tools)). Out of scope: the Rust
+shim runtime they drive; see [Host tools](#host-tools)), and the oberon-agent
+workspace's `oat` client with its on-system modules and image pipeline (see
+[Driving a live system](#driving-a-live-system-oat)). Out of scope: the Rust
 dev tools (`eo-driver`, `eo-inner-run`), and full-boot lockstep (the 7-checkpoint
 boot golden already pins that path against the C-derived hashes).
 
@@ -178,3 +221,4 @@ vendored C reference are used under the same terms.
 [rs]: https://github.com/zxygentoo/oberon-risc-emu-rs
 [po]: https://www.projectoberon.com
 [tsdl]: https://erratique.ch/software/tsdl
+[oa]: https://github.com/zxygentoo/oberon-agent

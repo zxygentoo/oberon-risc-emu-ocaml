@@ -19,9 +19,14 @@ What's in the default run:
 - **per-module unit tests** — CPU and memory map (`test_risc`, `test_himem`),
   devices (`test_disk`, `test_pclink`, `test_clipboard`, `test_raw_serial`),
   the shim ABI (`test_shim`), frontend (`test_ps2`, `test_cli`, `test_scale`,
-  `test_hotkeys`), and the host tools (`test_convert`, `test_packonly`,
+  `test_hotkeys`, `test_screenshot` — the last decodes captures back through
+  imagelib's own PNG reader), the host tools (`test_convert`, `test_packonly`,
   `test_image`, `test_resolve`, `test_pipeline`, `test_tool_cli`,
-  `test_fsutil`, `test_seed`).
+  `test_fsutil`, `test_seed`), and oat, the live-system serial client
+  (`test_oat_protocol` — golden wire frames, `test_oat_tools` — the typed
+  operations over an in-memory fake device wired through the real request
+  codec, `test_oat_transport` — host pipes with forked children playing the
+  device, `test_oat_retry`, `test_oat_cli`, `test_oat_error`).
 - **property tests** (QCheck) — `test_prop` (oracle-free laws: U32 algebra,
   memory round-trips, the Z/N flag invariant, device round-trips) and
   `test_risc5_isa` (codec round-trips, differential encode vs hand-rolled
@@ -59,6 +64,23 @@ declared dune dependency: setting it re-runs the test even after a cached skip.
 Byte-for-byte parity with the Rust tools is checked out-of-band by diffing both
 ports' output over the same input (`extract-source` trees compare equal with
 `diff -r`; `build-po-image` images hash identically).
+
+## The live oat battery (opt-in)
+
+```sh
+make test-po        # Project Oberon image
+make test-eo        # Extended Oberon image (downloads its stock source once)
+```
+
+builds the agent-ready disk image (see the root `Makefile`), boots it headless
+on a private FIFO pair with the display environment scrubbed, and drives the
+full `oat` surface against the running system from
+[`integration.sh`](integration.sh): write/read round-trips, every edit path
+(the wire OP_EDIT, the >1 KiB host-side fallback, and the error statuses),
+compile/load/call, listings, trap survival (a trapping call reports cleanly
+and the wire stays up), and deletes — plus, on Extended Oberon, a full
+edit → compile → unload → reload hot swap. Kept out of `dune test` because it
+boots a complete Oberon and needs the built image.
 
 ## Reproducing a QCheck failure
 
