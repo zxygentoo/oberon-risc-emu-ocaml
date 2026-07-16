@@ -63,3 +63,15 @@ let to_oberon text =
   |> String.map (fun c -> if c = '\n' then '\r' else c)
   |> utf8_to_latin1
 ;;
+
+(* Layout (Texts.Store after the 1-byte 0F1X tag): off:4 LE = absolute file offset of
+   the character run. Fall back to the raw bytes if the tag is absent, the header is
+   too short, or [off] is out of range. *)
+let strip_text_header data =
+  let n = String.length data in
+  if n < 5 || data.[0] <> '\xF1'
+  then data
+  else (
+    let off = Int32.to_int (String.get_int32_le data 1) in
+    if off >= 5 && off <= n then String.sub data off (n - off) else data)
+;;

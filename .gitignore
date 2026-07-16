@@ -2,3 +2,8 @@ _build/
 *.install
 *.merlin
 .merlin
+
+# oberon-agent image pipeline artifacts (see Makefile)
+build/
+DiskImage/ProjectOberon.dsk
+DiskImage/ExtendedOberon.dsk

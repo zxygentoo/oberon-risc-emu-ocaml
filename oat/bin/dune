@@ -1,0 +1,5 @@
+; The oat executable — a thin entry point over the oat library.
+
+(executable
+ (name oat)
+ (libraries oat))

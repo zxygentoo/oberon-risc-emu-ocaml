@@ -1,0 +1,10 @@
+--- Oberon.Mod
++++ Oberon.Mod
+@@ -587,6 +587,6 @@
+ 	Kernel.Install(SYSTEM.ADR(Trap), Kernel.TrapAdr); Kernel.Install(SYSTEM.ADR(Abort), 0);
+ 
+ 	IF Modules.importing = "Oberon" THEN (*loaded by the regular loader*)
+-		Modules.Load("System", Mod); Mod := NIL; Loop
++		Modules.Load("System", Mod); Modules.Load("AgentTool", Mod); Mod := NIL; Loop
+ 	END
+ END Oberon.

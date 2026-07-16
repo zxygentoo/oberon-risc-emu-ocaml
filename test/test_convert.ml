@@ -17,5 +17,24 @@ let () =
   eqs "beyond_latin1_is_replaced" (Convert.to_oberon "a\xE2\x86\x92b") "a?b";
   (* CR-terminated Oberon text round-trips *)
   eqs "round_trip_cr" (Convert.to_oberon (Convert.from_oberon "A\rB\r")) "A\rB\r";
+  (* strip_text_header (oat's read path): tag=F1, off:4 LE = offset of the character
+     run; anything short, untagged, or out of range passes through unchanged. *)
+  eqs "text_header_stripped" (Convert.strip_text_header "\xF1\x05\x00\x00\x00hi") "hi";
+  eqs "no_tag_passes_through" (Convert.strip_text_header "abc") "abc";
+  (* off=42 is out of range — fall back to the whole buffer. *)
+  eqs
+    "garbled_header_intact"
+    (Convert.strip_text_header "\xF1\x2A\x00\x00\x00x")
+    "\xF1\x2A\x00\x00\x00x";
+  (* negative off is out of range too *)
+  eqs
+    "negative_offset_intact"
+    (Convert.strip_text_header "\xF1\xFF\xFF\xFF\xFFx")
+    "\xF1\xFF\xFF\xFF\xFFx";
+  (* tag byte present but fewer than 4 offset bytes follow *)
+  eqs "truncated_header_intact" (Convert.strip_text_header "\xF1\x05") "\xF1\x05";
+  eqs "lone_tag_intact" (Convert.strip_text_header "\xF1") "\xF1";
+  (* the header may claim the whole file (empty character run) *)
+  eqs "offset_at_end_ok" (Convert.strip_text_header "\xF1\x05\x00\x00\x00") "";
   summary "convert checks"
 ;;

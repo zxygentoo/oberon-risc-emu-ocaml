@@ -59,6 +59,22 @@
   test_fsutil)
  (libraries oberon_tools test_harness))
 
+; oat tests (the serial client for AgentTool.Mod): wire framing, the retry
+; policy, the typed operations over an in-memory fake device (wired through the
+; real request codec), the transport over host pipes (forked children play the
+; device), CLI parsing, and the error contract. The live battery against a
+; booted image is separate: test/integration.sh, via `make test-po`/`test-eo`.
+
+(tests
+ (names
+  test_oat_protocol
+  test_oat_retry
+  test_oat_tools
+  test_oat_transport
+  test_oat_cli
+  test_oat_error)
+ (libraries oat unix test_harness))
+
 ; Embedded-seed structural checks (risc_core for boot_inner_core).
 
 (test
