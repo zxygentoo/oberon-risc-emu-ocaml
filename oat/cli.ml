@@ -93,7 +93,9 @@ let fail msg = raise (Fail msg)
    on the line but valid only with compile (the Rust CLI scoped it via clap). *)
 let command_of ~new_symbol positionals =
   let arity_err name = fail (Printf.sprintf "wrong number of arguments for '%s'" name) in
-  let command =
+  (* The annotation disambiguates the constructors requests share with responses
+     (Read; the past-tense scheme keeps the rest apart). *)
+  let command : Data.request =
     match positionals with
     | [] -> fail "missing command"
     | [ "check" ] -> Data.Check
@@ -222,16 +224,16 @@ let render = function
         \    System.Version patch. Variant detection is unavailable; proceed at\n\
         \    your own risk (PO-style unsafe unload may apply).\n")
     else Printf.printf "ok: %s (round-trip %dms)\n" version rtt_ms
-  | Data.File_read content -> print_string content
-  | Data.File_written { path; bytes } -> Printf.printf "ok wrote %s (%d bytes)\n" path bytes
-  | Data.File_edited { path } -> Printf.printf "ok edited %s\n" path
-  | Data.File_deleted { path } -> Printf.printf "ok deleted %s\n" path
-  | Data.Files_listed listing | Data.Modules_listed listing -> print_string listing
+  | Data.Read content -> print_string content
+  | Data.Written { path; bytes } -> Printf.printf "ok wrote %s (%d bytes)\n" path bytes
+  | Data.Edited { path } -> Printf.printf "ok edited %s\n" path
+  | Data.Deleted { path } -> Printf.printf "ok deleted %s\n" path
+  | Data.Listed_files listing | Data.Listed_modules listing -> print_string listing
   | Data.Compiled { output; failed } ->
     print_log output;
     if failed then Error.fail Error.Compile_failed
-  | Data.Module_loaded name -> Printf.printf "ok loaded %s\n" name
-  | Data.Module_unloaded { name; log } ->
+  | Data.Loaded name -> Printf.printf "ok loaded %s\n" name
+  | Data.Unloaded { name; log } ->
     Printf.printf "ok unloaded %s\n" name;
     (match String.trim log with
      | "" -> ()

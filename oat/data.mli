@@ -97,30 +97,32 @@ type request =
       ; args : string (** Parameter text scanned via Oberon.Par; "" for none. *)
       }
 
-(** The typed result of each request, 1:1 with the constructors above and
-    self-contained for {!Cli.render}. Failures raise {!Error.Error} — except in
-    the two log-carrying cases ([Compiled], [Called]), which report failure
-    in-band so the log can be printed before the process fails. *)
+(** The typed result of each request — one constructor per request above, named
+    as its past tense (so [Read] appears in both types; use sites disambiguate
+    by expected type) — self-contained for {!Cli.render}. Failures raise
+    {!Error.Error} — except in the two log-carrying cases ([Compiled],
+    [Called]), which report failure in-band so the log can be printed before
+    the process fails. *)
 type response =
   | Checked of
       { version : string (** "" when the image lacks the System.Version patch. *)
       ; rtt_ms : int
       }
-  | File_read of string
-  | File_written of
+  | Read of string
+  | Written of
       { path : string
       ; bytes : int
       }
-  | File_edited of { path : string }
-  | File_deleted of { path : string }
-  | Files_listed of string (** TSV: name, size, date. *)
-  | Modules_listed of string (** TSV: name, refcnt, code address. *)
+  | Edited of { path : string }
+  | Deleted of { path : string }
+  | Listed_files of string (** TSV: name, size, date. *)
+  | Listed_modules of string (** TSV: name, refcnt, code address. *)
   | Compiled of
       { output : string
       ; failed : bool
       }
-  | Module_loaded of string
-  | Module_unloaded of
+  | Loaded of string
+  | Unloaded of
       { name : string
       ; log : string
       }

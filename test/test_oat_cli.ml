@@ -128,25 +128,25 @@ let () =
      "render_checked_no_version_warns"
      (String.starts_with ~prefix:"ok: connected (round-trip 3ms)\n    warning:" out));
   (* File content passes through untouched — no added newline. *)
-  render "render_file_read" (Data.File_read "raw") ~want:"raw";
+  render "render_read" (Data.Read "raw") ~want:"raw";
   render
-    "render_file_written"
-    (Data.File_written { path = "F.Mod"; bytes = 2 })
+    "render_written"
+    (Data.Written { path = "F.Mod"; bytes = 2 })
     ~want:"ok wrote F.Mod (2 bytes)\n";
   render
-    "render_file_edited"
-    (Data.File_edited { path = "F.Mod" })
+    "render_edited"
+    (Data.Edited { path = "F.Mod" })
     ~want:"ok edited F.Mod\n";
   render
-    "render_file_deleted"
-    (Data.File_deleted { path = "F.Mod" })
+    "render_deleted"
+    (Data.Deleted { path = "F.Mod" })
     ~want:"ok deleted F.Mod\n";
-  render "render_files_listed" (Data.Files_listed "A\t1\nB\t2\n") ~want:"A\t1\nB\t2\n";
-  render "render_module_loaded" (Data.Module_loaded "M") ~want:"ok loaded M\n";
+  render "render_listed_files" (Data.Listed_files "A\t1\nB\t2\n") ~want:"A\t1\nB\t2\n";
+  render "render_loaded" (Data.Loaded "M") ~want:"ok loaded M\n";
   (* The unload log is indented under the ok line. *)
   render
-    "render_module_unloaded"
-    (Data.Module_unloaded { name = "X"; log = "System.Free\nX removing\n" })
+    "render_unloaded"
+    (Data.Unloaded { name = "X"; log = "System.Free\nX removing\n" })
     ~want:"ok unloaded X\n  System.Free\n  X removing\n";
   (* The log-carrying failures print the log (newline ensured) before raising, so
      it lands above the binary's error line. *)

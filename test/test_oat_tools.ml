@@ -153,8 +153,8 @@ let exec w req = Tools.execute (wire_of w) req
 
 let read w path =
   match exec w (Data.Read path) with
-  | Data.File_read content -> content
-  | _ -> failwith "expected File_read"
+  | Data.Read content -> content
+  | _ -> failwith "expected Read"
 ;;
 
 let write w path content = ignore (exec w (Data.Write { path; content }))
@@ -165,7 +165,7 @@ let () =
      response reports the host-side byte count. *)
   let w = new_fake () in
   (match exec w (Data.Write { path = "M.Mod"; content = "MODULE M;\nEND M.\n" }) with
-   | Data.File_written { path = "M.Mod"; bytes = 17 } -> check "write_response" true
+   | Data.Written { path = "M.Mod"; bytes = 17 } -> check "write_response" true
    | _ -> check "write_response" false);
   eqs "stored_with_cr" (Hashtbl.find w.files "M.Mod") "MODULE M;\rEND M.\r";
   eqs "read_roundtrip" (read w "M.Mod") "MODULE M;\nEND M.\n";
@@ -183,7 +183,7 @@ let () =
   (* EDIT: wire path. *)
   let w = with_file (new_fake ()) "M.Mod" "a := 1;\r" in
   (match exec w (Data.Edit { path = "M.Mod"; old = "a := 1"; new_ = "a := 2" }) with
-   | Data.File_edited { path = "M.Mod" } -> check "edit_response" true
+   | Data.Edited { path = "M.Mod" } -> check "edit_response" true
    | _ -> check "edit_response" false);
   eqs "edit_unique_replaces" (Hashtbl.find w.files "M.Mod") "a := 2;\r";
   expect_error
@@ -237,7 +237,7 @@ let () =
   (* delete. *)
   let w = with_file (new_fake ()) "M.Mod" "x\r" in
   (match exec w (Data.Delete "M.Mod") with
-   | Data.File_deleted { path = "M.Mod" } -> check "delete_response" true
+   | Data.Deleted { path = "M.Mod" } -> check "delete_response" true
    | _ -> check "delete_response" false);
   check "delete_removes" (not (Hashtbl.mem w.files "M.Mod"));
   expect_error
@@ -254,12 +254,12 @@ let () =
   (* listings. *)
   let w = with_file (with_file (new_fake ()) "A.Mod" "xx") "B.Mod" "yyy" in
   (match exec w (Data.List_files "") with
-   | Data.Files_listed out ->
+   | Data.Listed_files out ->
      check "list_files_tsv_a" (contains ~sub:"A.Mod\t2" out);
      check "list_files_tsv_b" (contains ~sub:"B.Mod\t3" out)
    | _ -> check "list_files_tsv_a" false);
   (match exec (new_fake ()) Data.List_modules with
-   | Data.Modules_listed out ->
+   | Data.Listed_modules out ->
      check "list_modules_seeded" (contains ~sub:"AgentTool\t" out)
    | _ -> check "list_modules_seeded" false);
   (* check: trimmed version line plus the host-side round-trip timing. *)
@@ -277,7 +277,7 @@ let () =
    | _ -> check "check_version_empty" false);
   (* load. *)
   (match exec (new_fake ()) (Data.Load "Foo") with
-   | Data.Module_loaded "Foo" -> check "load_ok" true
+   | Data.Loaded "Foo" -> check "load_ok" true
    | _ -> check "load_ok" false);
   let w = new_fake () in
   w.call
@@ -294,7 +294,7 @@ let () =
     (fun () -> ignore (exec w (Data.Load "Bad")));
   (* unload. *)
   (match exec (new_fake ()) (Data.Unload "Foo") with
-   | Data.Module_unloaded { name = "Foo"; log } ->
+   | Data.Unloaded { name = "Foo"; log } ->
      check "unload_response_log" (contains ~sub:"removing from module list" log)
    | _ -> check "unload_response_log" false);
   let w = new_fake () in

@@ -95,21 +95,21 @@ type response =
       { version : string
       ; rtt_ms : int
       }
-  | File_read of string
-  | File_written of
+  | Read of string
+  | Written of
       { path : string
       ; bytes : int
       }
-  | File_edited of { path : string }
-  | File_deleted of { path : string }
-  | Files_listed of string
-  | Modules_listed of string
+  | Edited of { path : string }
+  | Deleted of { path : string }
+  | Listed_files of string
+  | Listed_modules of string
   | Compiled of
       { output : string
       ; failed : bool
       }
-  | Module_loaded of string
-  | Module_unloaded of
+  | Loaded of string
+  | Unloaded of
       { name : string
       ; log : string
       }

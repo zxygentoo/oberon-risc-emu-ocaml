@@ -199,25 +199,25 @@ let execute (wire : Data.Wire.t) (request : Data.request) : Data.response =
     let version = version wire in
     let rtt_ms = int_of_float ((Unix.gettimeofday () -. start) *. 1000.0) in
     Data.Checked { version; rtt_ms }
-  | Data.Read path -> Data.File_read (read_file wire path)
+  | Data.Read path -> Data.Read (read_file wire path)
   | Data.Write { path; content } ->
     write_file wire ~path ~content;
-    Data.File_written { path; bytes = String.length content }
+    Data.Written { path; bytes = String.length content }
   | Data.Edit { path; old; new_ } ->
     edit_file wire ~path ~old ~new_;
-    Data.File_edited { path }
+    Data.Edited { path }
   | Data.Delete path ->
     delete_file wire path;
-    Data.File_deleted { path }
-  | Data.List_files prefix -> Data.Files_listed (list_files wire ~prefix)
-  | Data.List_modules -> Data.Modules_listed (list_modules wire)
+    Data.Deleted { path }
+  | Data.List_files prefix -> Data.Listed_files (list_files wire ~prefix)
+  | Data.List_modules -> Data.Listed_modules (list_modules wire)
   | Data.Compile { name; new_symbol } ->
     let { output; failed } = compile_module wire ~name ~new_symbol in
     Data.Compiled { output; failed }
   | Data.Load name ->
     load_module wire name;
-    Data.Module_loaded name
-  | Data.Unload name -> Data.Module_unloaded { name; log = unload_module wire name }
+    Data.Loaded name
+  | Data.Unload name -> Data.Unloaded { name; log = unload_module wire name }
   | Data.Call { cmd; args } ->
     let { log; failure } = run_command wire ~cmd ~args in
     Data.Called { log; failure }
