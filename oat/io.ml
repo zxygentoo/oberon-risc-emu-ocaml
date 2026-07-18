@@ -80,9 +80,9 @@ let with_retries ~retries f =
 let send device request =
   let frame = encode_request request in
   with_retries ~retries:(Device.retries device) (fun () ->
-    Device.drain_stale device;
-    Device.write_frame device frame;
-    read_response (Device.recv_exact device))
+    Device.drain device;
+    Device.send device frame;
+    read_response (Device.recv device))
 ;;
 
 module For_tests = struct

@@ -44,15 +44,15 @@ let expect_error name pred f =
 let () =
   (* Frames leave verbatim — the channel doesn't inspect the bytes. *)
   let d, _resp, sent_read = harness 1.0 in
-  Device.write_frame d "frame";
+  Device.send d "frame";
   let buf = Bytes.create 8 in
   let n = Unix.read sent_read buf 0 8 in
   eqs "frame_out_verbatim" (Bytes.sub_string buf 0 n) "frame";
-  (* recv_exact reassembles a fill split across writes. *)
+  (* recv reassembles a fill split across writes. *)
   let d, resp_write, _sent = harness 1.0 in
   let pid = delayed_writer resp_write [ "abc"; "defg" ] 0.02 in
   let buf = Bytes.create 7 in
-  Device.recv_exact d buf;
+  Device.recv d buf;
   eqs "split_reads_reassembled" (Bytes.to_string buf) "abcdefg";
   reap pid;
   (* A silent line times out, reporting progress... *)
@@ -62,7 +62,7 @@ let () =
     (function
       | Error.Timeout { got = 0; want = 4; _ } -> true
       | _ -> false)
-    (fun () -> Device.recv_exact d (Bytes.create 4));
+    (fun () -> Device.recv d (Bytes.create 4));
   (* ... including partial progress. *)
   let d, resp_write, _sent = harness 0.05 in
   ignore (Unix.write_substring resp_write "a" 0 1);
@@ -71,7 +71,7 @@ let () =
     (function
       | Error.Timeout { got = 1; want = 3; _ } -> true
       | _ -> false)
-    (fun () -> Device.recv_exact d (Bytes.create 3));
+    (fun () -> Device.recv d (Bytes.create 3));
   (* A closed line is EOF, not a timeout. *)
   let d, resp_write, _sent = harness 1.0 in
   Unix.close resp_write;
@@ -80,16 +80,16 @@ let () =
     (function
       | Error.Eof -> true
       | _ -> false)
-    (fun () -> Device.recv_exact d (Bytes.create 1));
-  (* drain_stale discards buffered leftovers; bytes arriving after it get
+    (fun () -> Device.recv d (Bytes.create 1));
+  (* drain discards buffered leftovers; bytes arriving after it get
      through untouched. *)
   let d, resp_write, _sent = harness 1.0 in
   ignore (Unix.write_substring resp_write "\x99stale" 0 6);
   Unix.sleepf 0.01;
-  Device.drain_stale d;
+  Device.drain d;
   let pid = delayed_writer resp_write [ "fresh" ] 0.02 in
   let buf = Bytes.create 5 in
-  Device.recv_exact d buf;
+  Device.recv d buf;
   eqs "stale_drained_fresh_read" (Bytes.to_string buf) "fresh";
   reap pid;
   (* The channel carries the retry budget Io.send honors. *)

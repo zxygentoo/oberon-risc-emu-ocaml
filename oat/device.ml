@@ -26,7 +26,7 @@ let rec poll_readable fd timeout =
   | exception Unix.Unix_error (Unix.EINTR, _, _) -> poll_readable fd timeout
 ;;
 
-let drain_stale t =
+let drain t =
   let scratch = Bytes.create 256 in
   let rec go () =
     if (try poll_readable t.reader 0.0 with Unix.Unix_error _ -> false)
@@ -39,7 +39,7 @@ let drain_stale t =
   go ()
 ;;
 
-let recv_exact t buf =
+let recv t buf =
   let want = Bytes.length buf in
   let rec go filled =
     if filled < want
@@ -72,7 +72,7 @@ let write_all fd bytes =
   go 0
 ;;
 
-let write_frame t frame =
+let send t frame =
   let w = Option.value t.writer ~default:t.reader in
   if t.char_delay = 0.0
   then write_all w (Bytes.of_string frame)

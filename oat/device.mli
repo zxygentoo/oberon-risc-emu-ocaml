@@ -38,16 +38,16 @@ val retries : t -> int
 (** Read and discard whatever is already buffered, so a stale or partial response
     from a prior exchange can't desync the next one. Best effort — errors just
     stop the drain. *)
-val drain_stale : t -> unit
+val drain : t -> unit
 
 (** Write one frame, pacing bytes [char_delay] apart when nonzero. The channel
     does not inspect the bytes.
     @raise Error.Error ([Io]) on a write error. *)
-val write_frame : t -> string -> unit
+val send : t -> string -> unit
 
 (** Fill all of [buf], polling up to the channel timeout for each chunk.
     @raise Error.Error ([Timeout], [Eof], or [Io]). *)
-val recv_exact : t -> bytes -> unit
+val recv : t -> bytes -> unit
 
 (** Direct construction over arbitrary fds — for tests that wire the channel to
     pipes. [writer = None] sends on [reader] (the PTY shape). *)
