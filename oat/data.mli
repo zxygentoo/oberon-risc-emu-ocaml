@@ -59,7 +59,7 @@ module Wire : sig
   (** Longest OLD fragment (in device bytes, after LF -> CR conversion) that an
       EDIT request may carry — the device matches inside a fixed buffer. Keep in
       sync with [editLim] in [oat/Mod/Common/AgentProtocol.Mod].
-      {!Tools.edit_file} falls back to the GET+PUT path for anything longer. *)
+      {!Tools}'s edit falls back to the GET+PUT path for anything longer. *)
   val edit_old_limit : int
 
   (** The wire itself: one REQUEST in, one RESPONSE back. [Io.send device] is the

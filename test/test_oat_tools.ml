@@ -1,7 +1,7 @@
-(* Tools-layer tests: each typed operation exercised against an in-memory fake of
-   the Oberon side, speaking typed wire values over the Data.Wire.t seam (the
-   byte codec around that seam is Io's, tested in test_oat_io), plus the execute
-   dispatch onto operation-level responses. *)
+(* Tools-layer tests: every operation exercised through Tools.execute — the
+   module's whole surface — against an in-memory fake of the Oberon side
+   speaking typed wire values over the Data.Wire.t seam (the byte codec around
+   that seam is Io's, tested in test_oat_io). *)
 
 open Oat
 open Oat.Data.Wire
@@ -147,71 +147,84 @@ let expect_error name pred f =
   | exception Error.Error e -> check name (pred e)
 ;;
 
+(* --- shorthands over the one surface --- *)
+
+let exec w req = Tools.execute (wire_of w) req
+
+let read w path =
+  match exec w (Data.Read path) with
+  | Data.File_read content -> content
+  | _ -> failwith "expected File_read"
+;;
+
+let write w path content = ignore (exec w (Data.Write { path; content }))
+let edit w path old new_ = ignore (exec w (Data.Edit { path; old; new_ }))
+
 let () =
-  (* write / read round-trip; the device stores CR line separators. *)
+  (* write / read round-trip; the device stores CR line separators, and the
+     response reports the host-side byte count. *)
   let w = new_fake () in
-  Tools.write_file (wire_of w) ~path:"M.Mod" ~content:"MODULE M;\nEND M.\n";
+  (match exec w (Data.Write { path = "M.Mod"; content = "MODULE M;\nEND M.\n" }) with
+   | Data.File_written { path = "M.Mod"; bytes = 17 } -> check "write_response" true
+   | _ -> check "write_response" false);
   eqs "stored_with_cr" (Hashtbl.find w.files "M.Mod") "MODULE M;\rEND M.\r";
-  eqs "read_roundtrip" (Tools.read_file (wire_of w) "M.Mod") "MODULE M;\nEND M.\n";
+  eqs "read_roundtrip" (read w "M.Mod") "MODULE M;\nEND M.\n";
   (* Latin-1 fold (intentional divergence from Rust oat): non-ASCII round-trips. *)
   let w = new_fake () in
-  Tools.write_file (wire_of w) ~path:"Acc.Txt" ~content:"caf\xC3\xA9\n";
+  write w "Acc.Txt" "caf\xC3\xA9\n";
   eqs "latin1_fold_on_device" (Hashtbl.find w.files "Acc.Txt") "caf\xE9\r";
-  eqs "latin1_fold_roundtrip" (Tools.read_file (wire_of w) "Acc.Txt") "caf\xC3\xA9\n";
+  eqs "latin1_fold_roundtrip" (read w "Acc.Txt") "caf\xC3\xA9\n";
   expect_error
     "read_missing_not_found"
     (function
       | Error.File_not_found _ -> true
       | _ -> false)
-    (fun () -> Tools.read_file (wire_of (new_fake ())) "X.Mod");
+    (fun () -> read (new_fake ()) "X.Mod");
   (* EDIT: wire path. *)
   let w = with_file (new_fake ()) "M.Mod" "a := 1;\r" in
-  Tools.edit_file (wire_of w) ~path:"M.Mod" ~old:"a := 1" ~new_:"a := 2";
+  (match exec w (Data.Edit { path = "M.Mod"; old = "a := 1"; new_ = "a := 2" }) with
+   | Data.File_edited { path = "M.Mod" } -> check "edit_response" true
+   | _ -> check "edit_response" false);
   eqs "edit_unique_replaces" (Hashtbl.find w.files "M.Mod") "a := 2;\r";
   expect_error
     "edit_old_not_found"
     (function
       | Error.Edit_not_found -> true
       | _ -> false)
-    (fun () ->
-       let w = with_file (new_fake ()) "M.Mod" "x\r" in
-       Tools.edit_file (wire_of w) ~path:"M.Mod" ~old:"zzz" ~new_:"q");
+    (fun () -> edit (with_file (new_fake ()) "M.Mod" "x\r") "M.Mod" "zzz" "q");
   expect_error
     "edit_old_not_unique_carries_count"
     (function
       | Error.Edit_not_unique 2 -> true
       | _ -> false)
-    (fun () ->
-       let w = with_file (new_fake ()) "M.Mod" "a a\r" in
-       Tools.edit_file (wire_of w) ~path:"M.Mod" ~old:"a" ~new_:"b");
+    (fun () -> edit (with_file (new_fake ()) "M.Mod" "a a\r") "M.Mod" "a" "b");
   expect_error
     "edit_missing_file_not_found"
     (function
       | Error.File_not_found _ -> true
       | _ -> false)
-    (fun () ->
-       Tools.edit_file (wire_of (new_fake ())) ~path:"Gone.Mod" ~old:"a" ~new_:"b");
+    (fun () -> edit (new_fake ()) "Gone.Mod" "a" "b");
   let w = with_file (new_fake ()) "M.Mod" "keep drop keep\r" in
-  Tools.edit_file (wire_of w) ~path:"M.Mod" ~old:" drop" ~new_:"";
+  edit w "M.Mod" " drop" "";
   eqs "edit_empty_new_deletes" (Hashtbl.find w.files "M.Mod") "keep keep\r";
   (* OLD spanning a line break: LF in the argument must match the CR stored on the
      device. *)
   let w = with_file (new_fake ()) "M.Mod" "a;\rb;\rc;\r" in
-  Tools.edit_file (wire_of w) ~path:"M.Mod" ~old:"a;\nb;" ~new_:"d;";
+  edit w "M.Mod" "a;\nb;" "d;";
   eqs "edit_multiline_matches_cr" (Hashtbl.find w.files "M.Mod") "d;\rc;\r";
   (* OLD beyond the device buffer takes the host-side GET+PUT path; a line break
      inside OLD still matches (both paths normalize). *)
   let long = String.make 600 'x' ^ "\n" ^ String.make 600 'y' in
   let w = new_fake () in
-  Tools.write_file (wire_of w) ~path:"Big.Txt" ~content:("head\n" ^ long ^ "\ntail\n");
-  Tools.edit_file (wire_of w) ~path:"Big.Txt" ~old:long ~new_:"z";
-  eqs "edit_long_old_falls_back" (Tools.read_file (wire_of w) "Big.Txt") "head\nz\ntail\n";
+  write w "Big.Txt" ("head\n" ^ long ^ "\ntail\n");
+  edit w "Big.Txt" long "z";
+  eqs "edit_long_old_falls_back" (read w "Big.Txt") "head\nz\ntail\n";
   (* Exactly edit_old_limit device bytes still fits the device buffer. *)
   let old = String.make edit_old_limit 'x' in
   let w = new_fake () in
-  Tools.write_file (wire_of w) ~path:"Lim.Txt" ~content:("a" ^ old ^ "b");
-  Tools.edit_file (wire_of w) ~path:"Lim.Txt" ~old ~new_:"-";
-  eqs "edit_old_at_limit_wire_path" (Tools.read_file (wire_of w) "Lim.Txt") "a-b";
+  write w "Lim.Txt" ("a" ^ old ^ "b");
+  edit w "Lim.Txt" old "-";
+  eqs "edit_old_at_limit_wire_path" (read w "Lim.Txt") "a-b";
   (* The device's trap recovery answers EDIT with stTrapped. *)
   expect_error
     "edit_trapped_maps_to_trapped"
@@ -220,41 +233,52 @@ let () =
       | _ -> false)
     (fun () ->
        let always_trapped _ = { status = Trapped; payload = "" } in
-       Tools.edit_file always_trapped ~path:"M.Mod" ~old:"a" ~new_:"b");
+       Tools.execute always_trapped (Data.Edit { path = "M.Mod"; old = "a"; new_ = "b" }));
   (* delete. *)
   let w = with_file (new_fake ()) "M.Mod" "x\r" in
-  Tools.delete_file (wire_of w) "M.Mod";
+  (match exec w (Data.Delete "M.Mod") with
+   | Data.File_deleted { path = "M.Mod" } -> check "delete_response" true
+   | _ -> check "delete_response" false);
   check "delete_removes" (not (Hashtbl.mem w.files "M.Mod"));
   expect_error
     "delete_absent_not_found"
     (function
       | Error.File_not_found _ -> true
       | _ -> false)
-    (fun () -> Tools.delete_file (wire_of w) "Gone.Mod");
+    (fun () -> ignore (exec w (Data.Delete "Gone.Mod")));
   (* Guards the full-phrase match: a file *named* "failed" must not be misread as a
      deletion failure. *)
   let w = with_file (new_fake ()) "failed.Mod" "x" in
-  Tools.delete_file (wire_of w) "failed.Mod";
+  ignore (exec w (Data.Delete "failed.Mod"));
   check "delete_failed_name_not_misread" (not (Hashtbl.mem w.files "failed.Mod"));
   (* listings. *)
   let w = with_file (with_file (new_fake ()) "A.Mod" "xx") "B.Mod" "yyy" in
-  let out = Tools.list_files (wire_of w) ~prefix:"" in
-  check "list_files_tsv_a" (contains ~sub:"A.Mod\t2" out);
-  check "list_files_tsv_b" (contains ~sub:"B.Mod\t3" out);
-  let out = Tools.list_modules (wire_of (new_fake ())) in
-  check "list_modules_seeded" (contains ~sub:"AgentTool\t" out);
-  (* version. *)
-  check
-    "version_string"
-    (contains ~sub:"Extended Oberon" (Tools.version (wire_of (new_fake ()))));
+  (match exec w (Data.List_files "") with
+   | Data.Files_listed out ->
+     check "list_files_tsv_a" (contains ~sub:"A.Mod\t2" out);
+     check "list_files_tsv_b" (contains ~sub:"B.Mod\t3" out)
+   | _ -> check "list_files_tsv_a" false);
+  (match exec (new_fake ()) Data.List_modules with
+   | Data.Modules_listed out ->
+     check "list_modules_seeded" (contains ~sub:"AgentTool\t" out)
+   | _ -> check "list_modules_seeded" false);
+  (* check: trimmed version line plus the host-side round-trip timing. *)
+  (match exec (new_fake ()) Data.Check with
+   | Data.Checked { version; rtt_ms } ->
+     eqs "check_version_trimmed" version "Extended Oberon System  AP 1.1.26";
+     check "check_rtt_nonneg" (rtt_ms >= 0)
+   | _ -> check "check_version_trimmed" false);
   let w = new_fake () in
   w.call
   <- Some
        (fun cmd _ -> if cmd = "AgentTool.Version" then Some (Ok, "") else None);
-  eqs "version_empty_payload" (Tools.version (wire_of w)) "";
+  (match exec w Data.Check with
+   | Data.Checked { version = ""; _ } -> check "check_version_empty" true
+   | _ -> check "check_version_empty" false);
   (* load. *)
-  Tools.load_module (wire_of (new_fake ())) "Foo";
-  check "load_ok" true;
+  (match exec (new_fake ()) (Data.Load "Foo") with
+   | Data.Module_loaded "Foo" -> check "load_ok" true
+   | _ -> check "load_ok" false);
   let w = new_fake () in
   w.call
   <- Some
@@ -267,8 +291,12 @@ let () =
     (function
       | Error.Load_failed { res = Some 2; _ } -> true
       | _ -> false)
-    (fun () -> Tools.load_module (wire_of w) "Bad");
+    (fun () -> ignore (exec w (Data.Load "Bad")));
   (* unload. *)
+  (match exec (new_fake ()) (Data.Unload "Foo") with
+   | Data.Module_unloaded { name = "Foo"; log } ->
+     check "unload_response_log" (contains ~sub:"removing from module list" log)
+   | _ -> check "unload_response_log" false);
   let w = new_fake () in
   w.call
   <- Some
@@ -281,8 +309,8 @@ let () =
     (function
       | Error.Unload_in_use _ -> true
       | _ -> false)
-    (fun () -> ignore (Tools.unload_module (wire_of w) "X"));
-  (* compile. *)
+    (fun () -> ignore (exec w (Data.Unload "X")));
+  (* compile: the log always comes back; FAILED becomes the in-band flag. *)
   let w = new_fake () in
   w.call
   <- Some
@@ -290,9 +318,11 @@ let () =
           if cmd = "ORP.Compile"
           then Some (Ok, "  compiling M\n  pos 5 undef\ncompilation FAILED\n")
           else None);
-  let r = Tools.compile_module (wire_of w) ~name:"M.Mod" ~new_symbol:false in
-  check "compile_failed_flag" r.Tools.failed;
-  check "compile_raw_log" (contains ~sub:"undef" r.Tools.output);
+  (match exec w (Data.Compile { name = "M.Mod"; new_symbol = false }) with
+   | Data.Compiled { output; failed } ->
+     check "compile_failed_flag" failed;
+     check "compile_raw_log" (contains ~sub:"undef" output)
+   | _ -> check "compile_failed_flag" false);
   let w = new_fake () in
   let saw_slash_s = ref false in
   w.call
@@ -303,9 +333,11 @@ let () =
             saw_slash_s := contains ~sub:"M.Mod/s" par;
             Some (Ok, "  compiling M new symbol file  10 4 ABCD\n"))
           else None);
-  let r = Tools.compile_module (wire_of w) ~name:"M.Mod" ~new_symbol:true in
-  check "compile_new_symbol_ok" (not r.Tools.failed);
-  check "compile_new_symbol_slash_s" !saw_slash_s;
+  (match exec w (Data.Compile { name = "M.Mod"; new_symbol = true }) with
+   | Data.Compiled { failed; _ } ->
+     check "compile_new_symbol_ok" (not failed);
+     check "compile_new_symbol_slash_s" !saw_slash_s
+   | _ -> check "compile_new_symbol_ok" false);
   let w = new_fake () in
   w.call
   <- Some (fun cmd _ -> if cmd = "ORP.Compile" then Some (Error, "") else None);
@@ -314,71 +346,23 @@ let () =
     (function
       | Error.Bad_status 3 -> true
       | _ -> false)
-    (fun () -> ignore (Tools.compile_module (wire_of w) ~name:"M.Mod" ~new_symbol:false));
+    (fun () -> ignore (exec w (Data.Compile { name = "M.Mod"; new_symbol = false })));
   (* call: the log always comes back; the status maps to an in-band failure. *)
   let w = new_fake () in
   w.call <- Some (fun _ _ -> Some (Trapped, "trap log\n"));
-  let r = Tools.run_command (wire_of w) ~cmd:"Bad.Cmd" ~args:"" in
-  eqs "run_command_trap_log" r.Tools.log "trap log\n";
-  check "run_command_trapped_failure" (r.Tools.failure = Some Error.Trapped);
+  (match exec w (Data.Call { cmd = "Bad.Cmd"; args = "" }) with
+   | Data.Called { log; failure } ->
+     eqs "call_trap_log" log "trap log\n";
+     check "call_trapped_failure" (failure = Some Error.Trapped)
+   | _ -> check "call_trapped_failure" false);
   let w = new_fake () in
   w.call <- Some (fun _ _ -> Some (Error, ""));
-  let r = Tools.run_command (wire_of w) ~cmd:"Bad.Cmd" ~args:"" in
-  check "run_command_bad_status_failure" (r.Tools.failure = Some (Error.Bad_status 3));
-  let r = Tools.run_command (wire_of (new_fake ())) ~cmd:"Any.Cmd" ~args:"" in
-  check "run_command_ok_no_failure" (r.Tools.failure = None);
-  (* execute: the op-level dispatch maps each request onto its typed response. *)
-  let w = new_fake () in
-  (match Tools.execute (wire_of w) Data.Check with
-   | Data.Checked { version; rtt_ms } ->
-     check "execute_check_version" (contains ~sub:"Extended Oberon" version);
-     check "execute_check_rtt_nonneg" (rtt_ms >= 0)
-   | _ -> check "execute_check_version" false);
-  (match Tools.execute (wire_of w) (Data.Write { path = "E.Mod"; content = "x\n" }) with
-   | Data.File_written { path = "E.Mod"; bytes = 2 } -> check "execute_write" true
-   | _ -> check "execute_write" false);
-  (match Tools.execute (wire_of w) (Data.Read "E.Mod") with
-   | Data.File_read "x\n" -> check "execute_read" true
-   | _ -> check "execute_read" false);
-  (match Tools.execute (wire_of w) (Data.Edit { path = "E.Mod"; old = "x"; new_ = "y" })
-   with
-   | Data.File_edited { path = "E.Mod" } ->
-     check "execute_edit" (Hashtbl.find w.files "E.Mod" = "y\r")
-   | _ -> check "execute_edit" false);
-  (match Tools.execute (wire_of w) (Data.List_files "") with
-   | Data.Files_listed listing -> check "execute_list_files" (contains ~sub:"E.Mod" listing)
-   | _ -> check "execute_list_files" false);
-  (match Tools.execute (wire_of w) Data.List_modules with
-   | Data.Modules_listed listing ->
-     check "execute_list_modules" (contains ~sub:"AgentTool" listing)
-   | _ -> check "execute_list_modules" false);
-  (match Tools.execute (wire_of w) (Data.Delete "E.Mod") with
-   | Data.File_deleted { path = "E.Mod" } ->
-     check "execute_delete" (not (Hashtbl.mem w.files "E.Mod"))
-   | _ -> check "execute_delete" false);
-  (match Tools.execute (wire_of w) (Data.Load "Foo") with
-   | Data.Module_loaded "Foo" -> check "execute_load" true
-   | _ -> check "execute_load" false);
-  (match Tools.execute (wire_of w) (Data.Unload "Foo") with
-   | Data.Module_unloaded { name = "Foo"; log } ->
-     check "execute_unload" (contains ~sub:"Foo" log)
-   | _ -> check "execute_unload" false);
-  let w = new_fake () in
-  w.call
-  <- Some
-       (fun cmd _ ->
-          if cmd = "ORP.Compile" then Some (Ok, "compilation FAILED\n") else None);
-  (match
-     Tools.execute (wire_of w) (Data.Compile { name = "M.Mod"; new_symbol = false })
-   with
-   | Data.Compiled { failed = true; output } ->
-     check "execute_compile_failed_in_band" (contains ~sub:"FAILED" output)
-   | _ -> check "execute_compile_failed_in_band" false);
-  let w = new_fake () in
-  w.call <- Some (fun _ _ -> Some (Trapped, "boom\n"));
-  (match Tools.execute (wire_of w) (Data.Call { cmd = "X.Y"; args = "" }) with
-   | Data.Called { log = "boom\n"; failure = Some Error.Trapped } ->
-     check "execute_call_trapped_in_band" true
-   | _ -> check "execute_call_trapped_in_band" false);
+  (match exec w (Data.Call { cmd = "Bad.Cmd"; args = "" }) with
+   | Data.Called { failure; _ } ->
+     check "call_bad_status_failure" (failure = Some (Error.Bad_status 3))
+   | _ -> check "call_bad_status_failure" false);
+  (match exec (new_fake ()) (Data.Call { cmd = "Any.Cmd"; args = "" }) with
+   | Data.Called { failure = None; _ } -> check "call_ok_no_failure" true
+   | _ -> check "call_ok_no_failure" false);
   summary "oat tools checks"
 ;;

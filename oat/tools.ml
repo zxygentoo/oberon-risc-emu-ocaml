@@ -8,11 +8,16 @@ open Data.Wire
 let to_oberon = Oberon_tools.Convert.to_oberon
 let from_oberon = Oberon_tools.Convert.from_oberon
 
+(* Output of compile_module: the compiler log always comes back; [failed] becomes
+   Data.Compiled's in-band failure flag. *)
 type compile_result =
   { output : string
   ; failed : bool
   }
 
+(* Output of run_command: the Oberon.Log delta written while the command ran,
+   plus the device status mapped to the command's error ([Trapped] or
+   [Bad_status]) — in-band, so the log can be printed first. *)
 type call_result =
   { log : string
   ; failure : Error.t option
@@ -116,6 +121,9 @@ let edit_file_via_rw (wire : Data.Wire.t) ~path ~old_dev ~new_ =
   write_file wire ~path ~content:(replace_first ~sub:old ~by:new_ content)
 ;;
 
+(* Normally one EDIT round-trip — the device matches OLD inside the file via its
+   Texts piece list and splices NEW in atomically; fragments over edit_old_limit
+   take the host-side fallback above. *)
 let edit_file (wire : Data.Wire.t) ~path ~old ~new_ =
   let old_dev = to_oberon old in
   if old_dev = "" || String.length old_dev > edit_old_limit
@@ -142,6 +150,8 @@ let delete_file wire path =
 
 let list_files wire ~prefix = call_log wire ~cmd:"AgentTool.ListFiles" ~args:prefix
 let list_modules wire = call_log wire ~cmd:"AgentTool.ListModules" ~args:""
+
+(* The trimmed System.Version log line; "" when the image lacks the patch. *)
 let version wire = String.trim (call_log wire ~cmd:"AgentTool.Version" ~args:"")
 
 let load_module wire name =
