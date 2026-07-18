@@ -54,10 +54,12 @@ module Wire = struct
     ; payload : string
     }
 
-  (* u32 LE at [pos] as a non-negative int (the land masks Int32's sign extension). *)
-  let u32 s pos = Int32.to_int (String.get_int32_le s pos) land 0xFFFFFFFF
-  let not_unique_count r = if String.length r.payload < 4 then 0 else u32 r.payload 0
+  let not_unique_count r =
+    if String.length r.payload < 4 then 0 else Risc_core.U32.get_le r.payload 0
+  ;;
+
   let edit_old_limit = 1024
+  let put_limit = 0x10000
 
   type t = request -> response
 end

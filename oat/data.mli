@@ -60,6 +60,13 @@ module Wire : sig
       {!Tool_call}'s edit falls back to the GET+PUT path for anything longer. *)
   val edit_old_limit : int
 
+  (** Largest PUT payload (in device bytes) the device accepts — its receive
+      buffer size. Keep in sync with [maxPut] in
+      [oat/Mod/Common/AgentProtocol.Mod]. {!Tool_call}'s write rejects longer
+      content host-side ([Put_too_large]) instead of streaming a payload the
+      device will refuse with an opaque status. *)
+  val put_limit : int
+
   (** The wire itself: one REQUEST in, one RESPONSE back. [Io.send device] is
       the production implementation; the tool_call tests plug in an in-memory
       fake device. The seam between {!Tool_call} and {!Io}. *)

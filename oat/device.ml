@@ -52,12 +52,12 @@ let recv t buf =
   go 0
 ;;
 
-let write_all fd bytes =
-  let n = Bytes.length bytes in
+(* Write s[pos .. pos+len-1] in full, straight from the string (no copy). *)
+let write_all fd s ~pos ~len =
   let rec go written =
-    if written < n
+    if written < len
     then (
-      match Unix.write fd bytes written (n - written) with
+      match Unix.write_substring fd s (pos + written) (len - written) with
       | w -> go (written + w)
       | exception Unix.Unix_error (Unix.EINTR, _, _) -> go written
       | exception Unix.Unix_error (e, _, _) ->
@@ -69,13 +69,13 @@ let write_all fd bytes =
 let send t frame =
   let w = Option.value t.writer ~default:t.reader in
   if t.char_delay = 0.0
-  then write_all w (Bytes.of_string frame)
+  then write_all w frame ~pos:0 ~len:(String.length frame)
   else
     (* One byte at a time, idling the wire between them so the device's cooperative
        poll can grab each byte. Slow but lossless on a raw UART. *)
-    String.iter
-      (fun c ->
-         write_all w (Bytes.make 1 c);
+    String.iteri
+      (fun i _ ->
+         write_all w frame ~pos:i ~len:1;
          Unix.sleepf t.char_delay)
       frame
 ;;

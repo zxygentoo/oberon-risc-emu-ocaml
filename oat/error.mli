@@ -7,9 +7,10 @@
 
 type t =
   | No_serial
-  | Bad_name of
-      { name : string
-      ; len : int
+  | Bad_name of string (** A wire name whose length is outside 1..255 bytes. *)
+  | Put_too_large of
+      { bytes : int
+      ; limit : int (** {!Data.Wire.put_limit}, the device's PUT buffer size. *)
       }
   | Open_fifo of
       { path : string
@@ -53,3 +54,8 @@ val exit_code : t -> int
 
 (** The one-line (occasionally multi-line, hint- or log-carrying) message body. *)
 val message : t -> string
+
+(** A device log rendered for display under a message or status line: trimmed,
+    then each line prefixed with a newline and two spaces; [""] when the log
+    trims to nothing. *)
+val indented_log : string -> string

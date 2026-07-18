@@ -22,9 +22,15 @@ type parsed =
   | Version
   | Invalid of string
 
+let default_timeout = 15.0
+let default_baud = 115200
+let default_char_delay_us = 600
+let default_retries = 3
+
 let usage =
-  "drive AgentTool.Mod on a live Project Oberon or Extended Oberon system over a \
-   serial link\n\n\
+  Printf.sprintf
+    "drive AgentTool.Mod on a live Project Oberon or Extended Oberon system over a \
+     serial link\n\n\
    A stateless CLI: each invocation opens the serial line, runs one command, prints\n\
    its result, and exits. The wire protocol is PUT/GET/CALL/EDIT — four opcodes\n\
    between the host and AgentTool.Mod on the device.\n\n\
@@ -49,13 +55,13 @@ let usage =
   \  call CMD [ARGS]\n\
   \                 Run any Oberon command 'Mod.Proc'; Log delta -> stdout\n\n\
    Options:\n\
-  \  --timeout SECS       Serial read timeout per request, in seconds [default: 15]\n\
+  \  --timeout SECS       Serial read timeout per request, in seconds [default: %g]\n\
   \  --baud RATE          Baud rate for a real serial device (--serial); ignored\n\
-  \                       for FIFO pairs [default: 115200]\n\
+  \                       for FIFO pairs [default: %d]\n\
   \  --char-delay-us US   Inter-byte delay for a real serial device (--serial), in\n\
-  \                       microseconds; ignored for FIFOs [default: 600]\n\
+  \                       microseconds; ignored for FIFOs [default: %d]\n\
   \  --retries N          Re-send a request this many times if it desyncs on a real\n\
-  \                       serial device (--serial); ignored for FIFOs [default: 3]\n\
+  \                       serial device (--serial); ignored for FIFOs [default: %d]\n\
   \  -h, --help           Print help\n\
   \  --version            Print version\n\n\
    Serial connection (one form required):\n\
@@ -70,6 +76,10 @@ let usage =
   \  mkfifo /tmp/p.in /tmp/p.out                                              # once\n\
   \  risc --serial-in /tmp/p.in --serial-out /tmp/p.out DiskImage/ProjectOberon.dsk &\n\
   \  oat --serial-in /tmp/p.in --serial-out /tmp/p.out check\n"
+    default_timeout
+    default_baud
+    default_char_delay_us
+    default_retries
 ;;
 
 (* Split [--opt=value] into [--opt; value] so the parser only handles [--opt value]. *)
@@ -122,10 +132,10 @@ let command_of ~new_symbol positionals =
 ;;
 
 let parse_argv raw_args =
-  let timeout = ref 15.0
-  and baud = ref 115200
-  and char_delay_us = ref 600
-  and retries = ref 3
+  let timeout = ref default_timeout
+  and baud = ref default_baud
+  and char_delay_us = ref default_char_delay_us
+  and retries = ref default_retries
   and serial = ref None
   and serial_in = ref None
   and serial_out = ref None
@@ -143,8 +153,8 @@ let parse_argv raw_args =
     | Some n when n >= 0 -> r := n
     | _ -> fail (Printf.sprintf "invalid %s %S" name v)
   in
-  (* One entry per value-taking option keeps the consuming arm and the
-     requires-a-value arm below in sync. *)
+  (* One entry per value-taking option; a single arm below both consumes the
+     value and reports it missing. *)
   let value_opts =
     [ "--timeout", float_opt "--timeout" timeout
     ; "--baud", uint_opt "--baud" baud
@@ -158,16 +168,17 @@ let parse_argv raw_args =
   let rec loop = function
     | [] -> ()
     | "--" :: rest -> positionals := List.rev_append rest !positionals
-    | o :: v :: rest when List.mem_assoc o value_opts ->
-      (List.assoc o value_opts) v;
-      loop rest
+    | o :: rest when List.mem_assoc o value_opts ->
+      (match rest with
+       | v :: rest ->
+         (List.assoc o value_opts) v;
+         loop rest
+       | [] -> fail (Printf.sprintf "option %s requires a value" o))
     | (("-s" | "--new-symbol") as spelling) :: rest ->
       new_symbol := Some spelling;
       loop rest
     | ("--help" | "-h") :: _ -> help := true
     | "--version" :: _ -> version := true
-    | [ o ] when List.mem_assoc o value_opts ->
-      fail (Printf.sprintf "option %s requires a value" o)
     | opt :: _ when String.length opt > 1 && opt.[0] = '-' ->
       fail (Printf.sprintf "unknown option %s" opt)
     | arg :: rest ->
@@ -234,11 +245,7 @@ let render = function
     if failed then Error.fail Error.Compile_failed
   | Data.Loaded name -> Printf.printf "ok loaded %s\n" name
   | Data.Unloaded { name; log } ->
-    Printf.printf "ok unloaded %s\n" name;
-    (match String.trim log with
-     | "" -> ()
-     | trimmed ->
-       List.iter (Printf.printf "  %s\n") (String.split_on_char '\n' trimmed))
+    Printf.printf "ok unloaded %s%s\n" name (Error.indented_log log)
   | Data.Called { log; failure } ->
     print_log log;
     Option.iter Error.fail failure

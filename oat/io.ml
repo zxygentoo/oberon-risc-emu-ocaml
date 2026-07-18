@@ -1,6 +1,7 @@
 (** The wire codec and the exchange discipline (see io.mli). *)
 
 module Wire = Data.Wire
+module U32 = Risc_core.U32
 
 let sync_req = 0xA5
 let sync_resp = 0x5A
@@ -9,15 +10,17 @@ let op_get = 2
 let op_call = 3
 let op_edit = 4
 let byte n = String.make 1 (Char.chr n)
-let le32 n = String.init 4 (fun i -> Char.chr ((n lsr (8 * i)) land 0xFF))
 
-(* u32 LE at [pos] as a non-negative int (the land masks Int32's sign extension). *)
-let u32 s pos = Int32.to_int (String.get_int32_le s pos) land 0xFFFFFFFF
+let le32 n =
+  let b = Bytes.create 4 in
+  U32.set_le b 0 n;
+  Bytes.unsafe_to_string b
+;;
 
 (* 1-byte length prefix, then the chars; 1..255 bytes. *)
 let name_field name =
   let len = String.length name in
-  if len = 0 || len > 255 then Error.fail (Error.Bad_name { name; len });
+  if len = 0 || len > 255 then Error.fail (Error.Bad_name name);
   byte len ^ name
 ;;
 
@@ -56,7 +59,7 @@ let read_response recv =
   let status = read_byte () in
   let len = Bytes.create 4 in
   recv len;
-  let length = u32 (Bytes.unsafe_to_string len) 0 in
+  let length = U32.get_le (Bytes.unsafe_to_string len) 0 in
   let payload = Bytes.create length in
   if length > 0 then recv payload;
   { Wire.status = Wire.status_of_byte status; payload = Bytes.unsafe_to_string payload }
@@ -97,7 +100,7 @@ module For_tests = struct
     let name = String.sub frame 3 nlen in
     let pos = ref (3 + nlen) in
     let blob () =
-      let len = u32 frame !pos in
+      let len = U32.get_le frame !pos in
       pos := !pos + 4;
       let b = String.sub frame !pos len in
       pos := !pos + len;

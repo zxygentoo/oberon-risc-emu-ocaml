@@ -8,21 +8,6 @@ module Wire = Data.Wire
 let to_oberon = Oberon_tools.Convert.to_oberon
 let from_oberon = Oberon_tools.Convert.from_oberon
 
-(* Output of compile_module: the compiler log always comes back; [failed] becomes
-   Data.Compiled's in-band failure flag. *)
-type compile_result =
-  { output : string
-  ; failed : bool
-  }
-
-(* Output of run_command: the Oberon.Log delta written while the command ran,
-   plus the device status mapped to the command's error ([Trapped] or
-   [Bad_status]) — in-band, so the log can be printed first. *)
-type call_result =
-  { log : string
-  ; failure : Error.t option
-  }
-
 let bad_status s = Error.fail (Error.Bad_status (Wire.status_byte s))
 let check_ok (r : Wire.response) = if r.status <> Wire.Ok then bad_status r.status
 
@@ -45,30 +30,20 @@ let find_sub ~sub ~from s =
   go from
 ;;
 
-(* Non-overlapping occurrence count, Rust's [s.matches(sub).count()] — which for an
-   empty pattern matches at every char boundary (len + 1). *)
-let count_occurrences ~sub s =
+(* Non-overlapping occurrence count and first-match offset (0 when there is
+   none), Rust's [s.matches(sub).count()] — which for an empty pattern matches
+   at every char boundary (len + 1 occurrences, the first at 0). One scan
+   serves both the uniqueness check and the splice in the edit fallback. *)
+let occurrences ~sub s =
   if sub = ""
-  then String.length s + 1
+  then String.length s + 1, 0
   else (
-    let rec go from count =
+    let rec go from count first =
       match find_sub ~sub ~from s with
-      | None -> count
-      | Some i -> go (i + String.length sub) (count + 1)
+      | None -> count, first
+      | Some i -> go (i + String.length sub) (count + 1) (if count = 0 then i else first)
     in
-    go 0 0)
-;;
-
-(* Rust's [s.replacen (sub, by, 1)]; an empty pattern matches at position 0. *)
-let replace_first ~sub ~by s =
-  if sub = ""
-  then by ^ s
-  else (
-    match find_sub ~sub ~from:0 s with
-    | None -> s
-    | Some at ->
-      let n = String.length sub in
-      String.sub s 0 at ^ by ^ String.sub s (at + n) (String.length s - at - n))
+    go 0 0 0)
 ;;
 
 let contains ~sub s = sub = "" || find_sub ~sub ~from:0 s <> None
@@ -106,7 +81,12 @@ let read_file (wire : Wire.t) path =
 ;;
 
 let write_file (wire : Wire.t) ~path ~content =
-  check_ok (wire (Wire.Put { name = path; data = to_oberon content }))
+  let data = to_oberon content in
+  if String.length data > Wire.put_limit
+  then
+    Error.fail
+      (Error.Put_too_large { bytes = String.length data; limit = Wire.put_limit });
+  check_ok (wire (Wire.Put { name = path; data }))
 ;;
 
 (* Fallback for fragments EDIT cannot carry: full read-modify-write through GET and
@@ -115,10 +95,17 @@ let write_file (wire : Wire.t) ~path ~content =
 let edit_file_via_rw (wire : Wire.t) ~path ~old_dev ~new_ =
   let old = from_oberon old_dev in
   let content = read_file wire path in
-  let count = count_occurrences ~sub:old content in
+  let count, first = occurrences ~sub:old content in
   if count = 0 then Error.fail Error.Edit_not_found;
   if count > 1 then Error.fail (Error.Edit_not_unique count);
-  write_file wire ~path ~content:(replace_first ~sub:old ~by:new_ content)
+  let tail = first + String.length old in
+  write_file
+    wire
+    ~path
+    ~content:
+      (String.sub content 0 first
+       ^ new_
+       ^ String.sub content tail (String.length content - tail))
 ;;
 
 (* Normally one EDIT round-trip — the device matches OLD inside the file via its
@@ -163,33 +150,16 @@ let load_module wire name =
 let unload_module wire name =
   (* We always pass /f. On EO that triggers safe-unload (hide-and-rename when live
      refs persist, full removal otherwise). On PO, /f tokenizes as junk that the
-     System.Free scanner discards — so the module is unloaded the unsafe way. The
-     "unloading failed" phrase is EO-only; on PO an in-use refusal goes undetected
-     here, which is why the skill insists on operator permission before any unload
-     on PO. *)
+     System.Free scanner discards — so the module is unloaded the unsafe way. Both
+     variants log "unloading failed" on an in-use refusal (PO: Modules.res = 1
+     when other modules still import the target) — but PO's refcnt only counts
+     module imports, so a PO unload that "succeeds" can still leave live heap or
+     viewer references dangling, which is why the skill insists on operator
+     permission before any unload on PO. *)
   let log = call_log wire ~cmd:"System.Free" ~args:(name ^ " /f") in
   if contains ~sub:"unloading failed" log
   then Error.fail (Error.Unload_in_use log);
   log
-;;
-
-let compile_module (wire : Wire.t) ~name ~new_symbol =
-  let par = if new_symbol then name ^ "/s" else name in
-  let r = wire (Wire.Call { cmd = "ORP.Compile"; par = to_oberon par }) in
-  check_ok r;
-  let output = from_oberon r.payload in
-  { output; failed = contains ~sub:"compilation FAILED" output }
-;;
-
-let run_command (wire : Wire.t) ~cmd ~args =
-  let r = wire (Wire.Call { cmd; par = to_oberon args }) in
-  let failure =
-    match r.status with
-    | Wire.Ok -> None
-    | Wire.Trapped -> Some Error.Trapped
-    | s -> Some (Error.Bad_status (Wire.status_byte s))
-  in
-  { log = from_oberon r.payload; failure }
 ;;
 
 let execute (wire : Wire.t) (request : Data.request) : Data.response =
@@ -212,13 +182,26 @@ let execute (wire : Wire.t) (request : Data.request) : Data.response =
   | Data.List_files prefix -> Data.Listed_files (list_files wire ~prefix)
   | Data.List_modules -> Data.Listed_modules (list_modules wire)
   | Data.Compile { name; new_symbol } ->
-    let { output; failed } = compile_module wire ~name ~new_symbol in
-    Data.Compiled { output; failed }
+    (* The compiler log always comes back; the FAILED phrase becomes the in-band
+       failure flag, so the log can be printed before the process fails. *)
+    let output =
+      call_log wire ~cmd:"ORP.Compile" ~args:(if new_symbol then name ^ "/s" else name)
+    in
+    Data.Compiled { output; failed = contains ~sub:"compilation FAILED" output }
   | Data.Load name ->
     load_module wire name;
     Data.Loaded name
   | Data.Unload name -> Data.Unloaded { name; log = unload_module wire name }
   | Data.Call { cmd; args } ->
-    let { log; failure } = run_command wire ~cmd ~args in
-    Data.Called { log; failure }
+    (* The Oberon.Log delta written while the command ran, with the device status
+       mapped to the command's error ([Trapped] or [Bad_status]) in-band, so the
+       log can be printed first. *)
+    let r = wire (Wire.Call { cmd; par = to_oberon args }) in
+    let failure =
+      match r.status with
+      | Wire.Ok -> None
+      | Wire.Trapped -> Some Error.Trapped
+      | s -> Some (Error.Bad_status (Wire.status_byte s))
+    in
+    Data.Called { log = from_oberon r.payload; failure }
 ;;

@@ -174,6 +174,15 @@ let () =
   write w "Acc.Txt" "caf\xC3\xA9\n";
   eqs "latin1_fold_on_device" (Hashtbl.find w.files "Acc.Txt") "caf\xE9\r";
   eqs "latin1_fold_roundtrip" (read w "Acc.Txt") "caf\xC3\xA9\n";
+  (* An over-limit PUT is refused host-side, before any wire traffic. *)
+  let w = new_fake () in
+  expect_error
+    "write_over_put_limit"
+    (function
+      | Error.Put_too_large { bytes = 70000; limit } -> limit = Wire.put_limit
+      | _ -> false)
+    (fun () -> write w "Big.Txt" (String.make 70000 'x'));
+  check "write_over_put_limit_untransmitted" (not (Hashtbl.mem w.files "Big.Txt"));
   expect_error
     "read_missing_not_found"
     (function

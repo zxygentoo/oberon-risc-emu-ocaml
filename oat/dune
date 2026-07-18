@@ -6,6 +6,9 @@
 ; Wrapped, so the modules read Oat.Tool_call / Oat.Io / ... from outside.
 ; The executable lives in bin/; the on-system half lives in Mod/.
 
+; risc_core appears only for U32 (the u32 <-> LE-byte codec shared repo-wide);
+; the emulator itself stays behind the serial FIFO surface.
+
 (library
  (name oat)
- (libraries oberon_tools unix))
+ (libraries risc_core oberon_tools unix))

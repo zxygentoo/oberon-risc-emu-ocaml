@@ -25,7 +25,7 @@ let () =
   (* Transport / protocol / argument errors -> 2. *)
   eq "no_serial_is_2" (Error.exit_code Error.No_serial) 2;
   eq "eof_is_2" (Error.exit_code Error.Eof) 2;
-  eq "bad_name_is_2" (Error.exit_code (Error.Bad_name { name = ""; len = 0 })) 2;
+  eq "bad_name_is_2" (Error.exit_code (Error.Bad_name "")) 2;
   eq
     "timeout_is_2"
     (Error.exit_code (Error.Timeout { secs = 1.0; got = 0; want = 1 }))
