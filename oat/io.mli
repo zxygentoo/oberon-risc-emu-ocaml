@@ -36,10 +36,11 @@ val read_response : (bytes -> unit) -> Data.Wire.response
 val with_retries : retries:int -> (unit -> 'a) -> 'a
 
 (** One full exchange: encode the request, drain stale bytes off the line, write
-    the frame, decode the response — re-sent per the device's retry budget.
-    [send device] is the production {!Data.Wire.t}.
+    the frame, decode the response — re-sent on a desync up to [retries] extra
+    attempts ({!with_retries}; pass 0 for the lossless FIFO path).
+    [send device ~retries] is the production {!Data.Wire.t}.
     @raise Error.Error on timeout, EOF, a bad sync byte, or an I/O error. *)
-val send : Device.t -> Data.Wire.t
+val send : Device.t -> retries:int -> Data.Wire.t
 
 (** The device's half of the codec — for peers that play the device over a real
     byte stream and for tests inverting the production codec — {b not} used in

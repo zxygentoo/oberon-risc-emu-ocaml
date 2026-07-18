@@ -246,18 +246,21 @@ let render = function
 
 let run cfg =
   let timeout = Float.max cfg.timeout 0.001 in
-  let device =
+  (* Retry only the lossy real-serial path. The FIFO/emulator channel is lossless
+     and back-pressured, so a timeout there is a genuine hang — pass it straight
+     through rather than waiting out N more timeouts. *)
+  let device, retries =
     match cfg.serial with
     | None -> Error.fail Error.No_serial
     | Some (Device path) ->
-      Device.open_device
-        path
-        ~timeout
-        ~baud:cfg.baud
-        ~char_delay:(float_of_int cfg.char_delay_us /. 1_000_000.0)
-        ~retries:cfg.retries
+      ( Device.open_device
+          path
+          ~timeout
+          ~baud:cfg.baud
+          ~char_delay:(float_of_int cfg.char_delay_us /. 1_000_000.0)
+      , cfg.retries )
     | Some (Fifos { fifo_in; fifo_out }) ->
-      Device.open_fifos ~in_path:fifo_in ~out_path:fifo_out ~timeout
+      Device.open_fifos ~in_path:fifo_in ~out_path:fifo_out ~timeout, 0
   in
   let request =
     match cfg.command with
@@ -272,5 +275,5 @@ let run cfg =
       Data.Write { path; content }
     | request -> request
   in
-  render (Tools.execute (Io.send device) request)
+  render (Tools.execute (Io.send device ~retries) request)
 ;;

@@ -47,7 +47,7 @@ let bad_sync () = Error.Bad_sync { got = 0; expected = 0x5A }
 
 (* Pipe-backed device for the exchange tests (reader = the "device -> host"
    pipe, writer = the "host -> device" pipe). *)
-let harness ?(retries = 0) timeout =
+let harness timeout =
   let resp_read, resp_write = Unix.pipe () in
   let sent_read, sent_write = Unix.pipe () in
   let d =
@@ -56,7 +56,6 @@ let harness ?(retries = 0) timeout =
       ~writer:(Some sent_write)
       ~timeout
       ~char_delay:0.0
-      ~retries
   in
   d, resp_write, sent_read
 ;;
@@ -205,7 +204,7 @@ let () =
       [ Io.For_tests.encode_response { status = Ok; payload = "hi" } ]
       0.02
   in
-  let r = Io.send d (Get { name = "X" }) in
+  let r = Io.send d ~retries:0 (Get { name = "X" }) in
   check "send_decodes_status" (r.status = Ok);
   eqs "send_decodes_payload" r.payload "hi";
   let expected_frame = Io.encode_request (Get { name = "X" }) in
@@ -220,7 +219,7 @@ let () =
     (function
       | Error.Timeout { got = 0; want = 1; _ } -> true
       | _ -> false)
-    (fun () -> Io.send d (Get { name = "X" }));
+    (fun () -> Io.send d ~retries:0 (Get { name = "X" }));
   (* Stale bytes left over from a prior exchange are drained before the request,
      so they can't shift this exchange's reply out of frame. *)
   let d, resp_write, _sent = harness 1.0 in
@@ -232,19 +231,19 @@ let () =
       [ Io.For_tests.encode_response { status = Ok; payload = "ok" } ]
       0.02
   in
-  let r = Io.send d (Get { name = "X" }) in
+  let r = Io.send d ~retries:0 (Get { name = "X" }) in
   eqs "stale_bytes_drained" r.payload "ok";
   reap pid;
-  (* A garbage sync byte desyncs the first attempt; the device's retry budget
-     covers the re-send, which finds a clean line. *)
-  let d, resp_write, _sent = harness ~retries:1 1.0 in
+  (* A garbage sync byte desyncs the first attempt; the retry budget covers the
+     re-send, which finds a clean line. *)
+  let d, resp_write, _sent = harness 1.0 in
   let pid =
     delayed_writer
       resp_write
       [ "\x42"; Io.For_tests.encode_response { status = Ok; payload = "again" } ]
       0.03
   in
-  let r = Io.send d (Get { name = "X" }) in
+  let r = Io.send d ~retries:1 (Get { name = "X" }) in
   eqs "desync_resend_recovers" r.payload "again";
   reap pid;
   summary "oat io checks"

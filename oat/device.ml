@@ -12,13 +12,7 @@ type t =
        at a time, so the real UART peer — a single-byte register with no flow control
        (the OberonStation RS232R), read by a cooperative poll — can grab each byte
        before the next overruns it. See the oat CLI's [--char-delay-us]. *)
-  ; retries : int
-    (* Re-send budget for a desynced request, honored by [Io.send]. Nonzero only for
-       the lossy real-serial path; the FIFO path is lossless, so a timeout there is a
-       genuine hang and fails straight through. *)
   }
-
-let retries t = t.retries
 
 let rec poll_readable fd timeout =
   match Unix.select [ fd ] [] [] timeout with
@@ -96,7 +90,7 @@ let open_fifo path =
 let open_fifos ~in_path ~out_path ~timeout =
   let writer = open_fifo in_path in
   let reader = open_fifo out_path in
-  { reader; writer = Some writer; timeout; char_delay = 0.0; retries = 0 }
+  { reader; writer = Some writer; timeout; char_delay = 0.0 }
 ;;
 
 (* Raw 8N1 at [baud] — cfmakeraw restated on [Unix.terminal_io] (IEXTEN is not
@@ -131,7 +125,7 @@ let set_raw_mode fd baud =
     }
 ;;
 
-let open_device path ~timeout ~baud ~char_delay ~retries =
+let open_device path ~timeout ~baud ~char_delay =
   let open_err err = Error.fail (Error.Open_serial { path; err }) in
   let fd =
     try Unix.openfile path [ Unix.O_RDWR; Unix.O_NOCTTY ] 0 with
@@ -139,11 +133,9 @@ let open_device path ~timeout ~baud ~char_delay ~retries =
   in
   (try set_raw_mode fd baud with
    | Unix.Unix_error (err, _, _) -> open_err err);
-  { reader = fd; writer = None; timeout; char_delay; retries }
+  { reader = fd; writer = None; timeout; char_delay }
 ;;
 
 module For_tests = struct
-  let make ~reader ~writer ~timeout ~char_delay ~retries =
-    { reader; writer; timeout; char_delay; retries }
-  ;;
+  let make ~reader ~writer ~timeout ~char_delay = { reader; writer; timeout; char_delay }
 end

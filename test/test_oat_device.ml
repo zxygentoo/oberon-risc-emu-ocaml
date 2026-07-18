@@ -6,7 +6,7 @@
 open Oat
 open Test_harness
 
-let harness ?(retries = 0) timeout =
+let harness timeout =
   let resp_read, resp_write = Unix.pipe () in
   let sent_read, sent_write = Unix.pipe () in
   let d =
@@ -15,7 +15,6 @@ let harness ?(retries = 0) timeout =
       ~writer:(Some sent_write)
       ~timeout
       ~char_delay:0.0
-      ~retries
   in
   d, resp_write, sent_read
 ;;
@@ -92,18 +91,15 @@ let () =
   Device.recv d buf;
   eqs "stale_drained_fresh_read" (Bytes.to_string buf) "fresh";
   reap pid;
-  (* The channel carries the retry budget Io.send honors. *)
-  let d, _resp, _sent = harness ~retries:2 1.0 in
-  eq "retries_carried" (Device.retries d) 2;
-  (* open_fifos: read-write opens that never block, lossless => budget 0; a
-     missing path reports Open_fifo (with the mkfifo hint downstream). *)
+  (* open_fifos: read-write opens that never block; a missing path reports
+     Open_fifo (with the mkfifo hint downstream). *)
   with_scratch ~prefix:"oat_device" (fun dir ->
     let in_path = Filename.concat dir "p.in"
     and out_path = Filename.concat dir "p.out" in
     Unix.mkfifo in_path 0o600;
     Unix.mkfifo out_path 0o600;
-    let d = Device.open_fifos ~in_path ~out_path ~timeout:0.1 in
-    eq "fifo_retries_zero" (Device.retries d) 0;
+    let _d = Device.open_fifos ~in_path ~out_path ~timeout:0.1 in
+    check "fifo_pair_opens" true;
     expect_error
       "fifo_missing_is_open_fifo"
       (function

@@ -77,9 +77,9 @@ let with_retries ~retries f =
   go 0
 ;;
 
-let send device request =
+let send device ~retries request =
   let frame = encode_request request in
-  with_retries ~retries:(Device.retries device) (fun () ->
+  with_retries ~retries (fun () ->
     Device.drain device;
     Device.send device frame;
     read_response (Device.recv device))
