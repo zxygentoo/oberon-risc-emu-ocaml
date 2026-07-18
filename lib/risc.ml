@@ -557,11 +557,7 @@ module For_shim = struct
      [len = 0]) into RAM, then set up the boot registers. *)
   let boot_inner_core t image stack_org =
     let n = String.length image in
-    let read_u32 at =
-      if at + 4 <= n
-      then Some (Int32.to_int (String.get_int32_le image at) land U32.mask)
-      else None
-    in
+    let read_u32 at = if at + 4 <= n then Some (U32.get_le image at) else None in
     let rec load p =
       match read_u32 p with
       | None -> failwith "inner core: truncated length"

@@ -37,3 +37,12 @@ val sar : int -> int -> int
 
 (** Rotate right by [n] in [0, 31]. *)
 val ror : int -> int -> int
+
+(** The [u32] whose bits are [x] (undoes [Int32]'s sign extension). *)
+val of_int32 : int32 -> int
+
+(** The [u32] at byte offset [pos] of [s], little-endian. *)
+val get_le : string -> int -> int
+
+(** Write [v]'s low 32 bits at byte offset [pos] of [b], little-endian. *)
+val set_le : bytes -> int -> int -> unit

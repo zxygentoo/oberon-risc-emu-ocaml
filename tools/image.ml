@@ -39,8 +39,7 @@ exception Bad_image of string
 
 let bad msg = raise (Bad_image msg)
 
-(* Little-endian u32 at [off] as a non-negative OCaml int. *)
-let rd_u32 buf off = Int32.to_int (String.get_int32_le buf off) land U32.mask
+let rd_u32 = U32.get_le
 
 (* Same four bytes reinterpreted as a signed 32-bit value (Rust's [rd_u32 as i32]). *)
 let rd_i32 buf off = U32.to_i32 (rd_u32 buf off)
