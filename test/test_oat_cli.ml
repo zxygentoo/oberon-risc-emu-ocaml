@@ -38,13 +38,13 @@ let with_captured_stdout f =
 ;;
 
 let render name response ~want =
-  let result, out = with_captured_stdout (fun () -> Cli.render response) in
+  let result, out = with_captured_stdout (fun () -> Cli.For_tests.render response) in
   check name (result = Ok ());
   eqs (name ^ "_out") out want
 ;;
 
 let render_fails name response ~failure ~want =
-  let result, out = with_captured_stdout (fun () -> Cli.render response) in
+  let result, out = with_captured_stdout (fun () -> Cli.For_tests.render response) in
   check name (result = Error (Error.Error failure));
   eqs (name ^ "_log_first") out want
 ;;
@@ -121,7 +121,7 @@ let () =
     ~want:"ok: Extended Oberon System  AP 1.1.26 (round-trip 3ms)\n";
   (let result, out =
      with_captured_stdout (fun () ->
-       Cli.render (Data.Checked { version = ""; rtt_ms = 3 }))
+       Cli.For_tests.render (Data.Checked { version = ""; rtt_ms = 3 }))
    in
    check "render_checked_no_version" (result = Ok ());
    check

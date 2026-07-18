@@ -36,12 +36,15 @@ val parse_argv : string list -> parsed
 
 val usage : string
 
-(** Print one response to stdout — the sole owner of oat's success output. For
-    the log-carrying results ([Compiled], [Called]) the log is printed first,
-    then any in-band failure is raised, so it lands above the error line.
-    @raise Error.Error on such an in-band failure. *)
-val render : Data.response -> unit
-
 (** Open the device, fill a [Write] request from stdin, execute, render.
     @raise Error.Error on any tool- or transport-level failure. *)
 val run : config -> unit
+
+(** Exposed for the rendering tests — production output flows through {!run}. *)
+module For_tests : sig
+  (** Print one response to stdout — the sole owner of oat's success output. For
+      the log-carrying results ([Compiled], [Called]) the log is printed first,
+      then any in-band failure is raised, so it lands above the error line.
+      @raise Error.Error on such an in-band failure. *)
+  val render : Data.response -> unit
+end

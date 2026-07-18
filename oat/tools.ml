@@ -1,6 +1,6 @@
 (** The typed oat operations on the Oberon device — the semantics layer. *)
 
-open Data.Wire
+module Wire = Data.Wire
 
 (* Device text via the shared ob2txt/txt2ob transforms ({!Oberon_tools.Convert}).
    Intentional divergence from the Rust oat, whose to_oberon sends raw UTF-8 bytes to
@@ -23,8 +23,8 @@ type call_result =
   ; failure : Error.t option
   }
 
-let bad_status s = Error.fail (Error.Bad_status (status_byte s))
-let check_ok r = if not (ok r) then bad_status r.status
+let bad_status s = Error.fail (Error.Bad_status (Wire.status_byte s))
+let check_ok (r : Wire.response) = if r.status <> Wire.Ok then bad_status r.status
 
 (* --- string helpers (Rust's str::matches / replacen / contains) --- *)
 
@@ -75,8 +75,8 @@ let contains ~sub s = sub = "" || find_sub ~sub ~from:0 s <> None
 
 (* --- internals --- *)
 
-let call_log (wire : Data.Wire.t) ~cmd ~args =
-  let r = wire (Call { cmd; par = to_oberon args }) in
+let call_log (wire : Wire.t) ~cmd ~args =
+  let r = wire (Wire.Call { cmd; par = to_oberon args }) in
   check_ok r;
   from_oberon r.payload
 ;;
@@ -93,26 +93,26 @@ let parse_res log =
 
 (* --- the operations --- *)
 
-let read_file (wire : Data.Wire.t) path =
-  let r = wire (Get { name = path }) in
+let read_file (wire : Wire.t) path =
+  let r = wire (Wire.Get { name = path }) in
   match r.status with
-  | Ok ->
+  | Wire.Ok ->
     (* Only a GET payload can carry the 0F1X header of a [Texts.Close]-written file,
        so the strip lives here alone; logs and edit fragments never have one. (The
        Rust oat strips inside every from_oberon — inert difference in practice.) *)
     from_oberon (Oberon_tools.Convert.strip_text_header r.payload)
-  | Not_found -> Error.fail (Error.File_not_found path)
+  | Wire.Not_found -> Error.fail (Error.File_not_found path)
   | s -> bad_status s
 ;;
 
-let write_file (wire : Data.Wire.t) ~path ~content =
-  check_ok (wire (Put { name = path; data = to_oberon content }))
+let write_file (wire : Wire.t) ~path ~content =
+  check_ok (wire (Wire.Put { name = path; data = to_oberon content }))
 ;;
 
 (* Fallback for fragments EDIT cannot carry: full read-modify-write through GET and
    PUT. [old_dev] is the fragment already in device form; converting it back puts
    both paths' matching in the same (host) space. *)
-let edit_file_via_rw (wire : Data.Wire.t) ~path ~old_dev ~new_ =
+let edit_file_via_rw (wire : Wire.t) ~path ~old_dev ~new_ =
   let old = from_oberon old_dev in
   let content = read_file wire path in
   let count = count_occurrences ~sub:old content in
@@ -124,18 +124,18 @@ let edit_file_via_rw (wire : Data.Wire.t) ~path ~old_dev ~new_ =
 (* Normally one EDIT round-trip — the device matches OLD inside the file via its
    Texts piece list and splices NEW in atomically; fragments over edit_old_limit
    take the host-side fallback above. *)
-let edit_file (wire : Data.Wire.t) ~path ~old ~new_ =
+let edit_file (wire : Wire.t) ~path ~old ~new_ =
   let old_dev = to_oberon old in
-  if old_dev = "" || String.length old_dev > edit_old_limit
+  if old_dev = "" || String.length old_dev > Wire.edit_old_limit
   then edit_file_via_rw wire ~path ~old_dev ~new_
   else (
-    let r = wire (Edit { name = path; old = old_dev; new_ = to_oberon new_ }) in
+    let r = wire (Wire.Edit { name = path; old = old_dev; new_ = to_oberon new_ }) in
     match r.status with
-    | Ok -> ()
-    | Not_found -> Error.fail (Error.File_not_found path)
-    | No_match -> Error.fail Error.Edit_not_found
-    | Not_unique -> Error.fail (Error.Edit_not_unique (not_unique_count r))
-    | Trapped -> Error.fail Error.Trapped
+    | Wire.Ok -> ()
+    | Wire.Not_found -> Error.fail (Error.File_not_found path)
+    | Wire.No_match -> Error.fail Error.Edit_not_found
+    | Wire.Not_unique -> Error.fail (Error.Edit_not_unique (Wire.not_unique_count r))
+    | Wire.Trapped -> Error.fail Error.Trapped
     | s -> bad_status s)
 ;;
 
@@ -173,26 +173,26 @@ let unload_module wire name =
   log
 ;;
 
-let compile_module (wire : Data.Wire.t) ~name ~new_symbol =
+let compile_module (wire : Wire.t) ~name ~new_symbol =
   let par = if new_symbol then name ^ "/s" else name in
-  let r = wire (Call { cmd = "ORP.Compile"; par = to_oberon par }) in
+  let r = wire (Wire.Call { cmd = "ORP.Compile"; par = to_oberon par }) in
   check_ok r;
   let output = from_oberon r.payload in
   { output; failed = contains ~sub:"compilation FAILED" output }
 ;;
 
-let run_command (wire : Data.Wire.t) ~cmd ~args =
-  let r = wire (Call { cmd; par = to_oberon args }) in
+let run_command (wire : Wire.t) ~cmd ~args =
+  let r = wire (Wire.Call { cmd; par = to_oberon args }) in
   let failure =
     match r.status with
-    | Ok -> None
-    | Trapped -> Some Error.Trapped
-    | s -> Some (Error.Bad_status (status_byte s))
+    | Wire.Ok -> None
+    | Wire.Trapped -> Some Error.Trapped
+    | s -> Some (Error.Bad_status (Wire.status_byte s))
   in
   { log = from_oberon r.payload; failure }
 ;;
 
-let execute (wire : Data.Wire.t) (request : Data.request) : Data.response =
+let execute (wire : Wire.t) (request : Data.request) : Data.response =
   match request with
   | Data.Check ->
     let start = Unix.gettimeofday () in

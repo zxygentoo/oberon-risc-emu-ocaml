@@ -49,8 +49,6 @@ module Wire : sig
     ; payload : string
     }
 
-  val ok : response -> bool
-
   (** The occurrence count carried by a [Not_unique] response (u32 LE payload);
       0 when the payload is absent or short. Kept beside the type so the payload
       encoding never leaves this module. *)

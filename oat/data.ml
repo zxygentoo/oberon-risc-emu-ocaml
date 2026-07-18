@@ -54,8 +54,6 @@ module Wire = struct
     ; payload : string
     }
 
-  let ok r = r.status = Ok
-
   (* u32 LE at [pos] as a non-negative int (the land masks Int32's sign extension). *)
   let u32 s pos = Int32.to_int (String.get_int32_le s pos) land 0xFFFFFFFF
   let not_unique_count r = if String.length r.payload < 4 then 0 else u32 r.payload 0

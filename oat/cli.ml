@@ -279,3 +279,7 @@ let run cfg =
   in
   render (Tools.execute (Io.send device ~retries) request)
 ;;
+
+module For_tests = struct
+  let render = render
+end

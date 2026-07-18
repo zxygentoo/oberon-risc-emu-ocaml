@@ -4,15 +4,15 @@
    that seam is Io's, tested in test_oat_io). *)
 
 open Oat
-open Oat.Data.Wire
 open Test_harness
+module Wire = Data.Wire
 
 (* --- the fake device --- *)
 
 type fake =
   { files : (string, string) Hashtbl.t
   ; mutable modules : string list
-  ; mutable call : (string -> string -> (status * string) option) option
+  ; mutable call : (string -> string -> (Wire.status * string) option) option
     (* Ad-hoc CALL override: [Some (status, log)] short-circuits the default
        dispatch; [None] falls through to the built-in behavior. *)
   }
@@ -57,8 +57,8 @@ let dispatch_call fake cmd par =
        if Hashtbl.mem fake.files arg
        then (
          Hashtbl.remove fake.files arg;
-         Ok, Printf.sprintf "System.DeleteFiles\n%s deleting\n" arg)
-       else Ok, Printf.sprintf "System.DeleteFiles\n%s deleting failed\n" arg
+         Wire.Ok, Printf.sprintf "System.DeleteFiles\n%s deleting\n" arg)
+       else Wire.Ok, Printf.sprintf "System.DeleteFiles\n%s deleting failed\n" arg
      | "System.Free" ->
        (* EO syntax: one or more module names then optional /f. *)
        let parts =
@@ -70,12 +70,12 @@ let dispatch_call fake cmd par =
           let action =
             if contains ~sub:"/f" arg then "removing from module list" else "unloading"
           in
-          Ok, Printf.sprintf "System.Free\n%s %s\n" first action
-        | [] -> Ok, "System.Free\n")
+          Wire.Ok, Printf.sprintf "System.Free\n%s %s\n" first action
+        | [] -> Wire.Ok, "System.Free\n")
      | "AgentTool.Load" ->
        fake.modules <- arg :: fake.modules;
-       Ok, Printf.sprintf "loaded %s\n" arg
-     | "AgentTool.Version" -> Ok, "Extended Oberon System  AP 1.1.26\n"
+       Wire.Ok, Printf.sprintf "loaded %s\n" arg
+     | "AgentTool.Version" -> Wire.Ok, "Extended Oberon System  AP 1.1.26\n"
      | "AgentTool.ListFiles" ->
        let names = Hashtbl.fold (fun k _ acc -> k :: acc) fake.files [] in
        let lines =
@@ -86,25 +86,25 @@ let dispatch_call fake cmd par =
              n
              (String.length (Hashtbl.find fake.files n)))
        in
-       Ok, String.concat "\n" lines ^ "\n"
+       Wire.Ok, String.concat "\n" lines ^ "\n"
      | "AgentTool.ListModules" ->
        let lines =
          List.sort compare fake.modules
          |> List.map (fun m -> Printf.sprintf "%s\t0\t 00001000" m)
        in
-       Ok, String.concat "\n" lines ^ "\n"
-     | _ -> Ok, "")
+       Wire.Ok, String.concat "\n" lines ^ "\n"
+     | _ -> Wire.Ok, "")
 ;;
 
 (* Mirrors AgentProtocol's DoEdit: non-overlapping count, splice at the first match,
    occurrence count in the not-unique payload. *)
 let dispatch_edit fake name old new_ =
-  let empty status = { status; payload = "" } in
-  if old = "" || String.length old > edit_old_limit
-  then empty Error
+  let empty status = { Wire.status; payload = "" } in
+  if old = "" || String.length old > Wire.edit_old_limit
+  then empty Wire.Error
   else (
     match Hashtbl.find_opt fake.files name with
-    | None -> empty Not_found
+    | None -> empty Wire.Not_found
     | Some content ->
       let n = String.length old in
       let rec scan i count first =
@@ -115,7 +115,7 @@ let dispatch_edit fake name old new_ =
         else scan (i + 1) count first
       in
       (match scan 0 0 (-1) with
-       | 0, _ -> empty No_match
+       | 0, _ -> empty Wire.No_match
        | 1, at ->
          Hashtbl.replace
            fake.files
@@ -123,22 +123,22 @@ let dispatch_edit fake name old new_ =
            (String.sub content 0 at
             ^ new_
             ^ String.sub content (at + n) (String.length content - at - n));
-         empty Ok
-       | count, _ -> { status = Not_unique; payload = le32 count }))
+         empty Wire.Ok
+       | count, _ -> { Wire.status = Wire.Not_unique; payload = le32 count }))
 ;;
 
-let wire_of fake : Data.Wire.t = function
-  | Get { name } ->
+let wire_of fake : Wire.t = function
+  | Wire.Get { name } ->
     (match Hashtbl.find_opt fake.files name with
-     | Some data -> { status = Ok; payload = data }
-     | None -> { status = Not_found; payload = "" })
-  | Put { name; data } ->
+     | Some data -> { Wire.status = Wire.Ok; payload = data }
+     | None -> { Wire.status = Wire.Not_found; payload = "" })
+  | Wire.Put { name; data } ->
     Hashtbl.replace fake.files name data;
-    { status = Ok; payload = "" }
-  | Call { cmd; par } ->
+    { Wire.status = Wire.Ok; payload = "" }
+  | Wire.Call { cmd; par } ->
     let status, payload = dispatch_call fake cmd par in
-    { status; payload }
-  | Edit { name; old; new_ } -> dispatch_edit fake name old new_
+    { Wire.status; payload }
+  | Wire.Edit { name; old; new_ } -> dispatch_edit fake name old new_
 ;;
 
 let expect_error name pred f =
@@ -154,7 +154,7 @@ let exec w req = Tools.execute (wire_of w) req
 let read w path =
   match exec w (Data.Read path) with
   | Data.Read content -> content
-  | _ -> failwith "expected Read"
+  | _ -> failwith "expected Data.Read"
 ;;
 
 let write w path content = ignore (exec w (Data.Write { path; content }))
@@ -220,7 +220,7 @@ let () =
   edit w "Big.Txt" long "z";
   eqs "edit_long_old_falls_back" (read w "Big.Txt") "head\nz\ntail\n";
   (* Exactly edit_old_limit device bytes still fits the device buffer. *)
-  let old = String.make edit_old_limit 'x' in
+  let old = String.make Wire.edit_old_limit 'x' in
   let w = new_fake () in
   write w "Lim.Txt" ("a" ^ old ^ "b");
   edit w "Lim.Txt" old "-";
@@ -232,7 +232,7 @@ let () =
       | Error.Trapped -> true
       | _ -> false)
     (fun () ->
-       let always_trapped _ = { status = Trapped; payload = "" } in
+       let always_trapped _ = { Wire.status = Wire.Trapped; payload = "" } in
        Tools.execute always_trapped (Data.Edit { path = "M.Mod"; old = "a"; new_ = "b" }));
   (* delete. *)
   let w = with_file (new_fake ()) "M.Mod" "x\r" in
@@ -271,7 +271,7 @@ let () =
   let w = new_fake () in
   w.call
   <- Some
-       (fun cmd _ -> if cmd = "AgentTool.Version" then Some (Ok, "") else None);
+       (fun cmd _ -> if cmd = "AgentTool.Version" then Some (Wire.Ok, "") else None);
   (match exec w Data.Check with
    | Data.Checked { version = ""; _ } -> check "check_version_empty" true
    | _ -> check "check_version_empty" false);
@@ -284,7 +284,7 @@ let () =
   <- Some
        (fun cmd _ ->
           if cmd = "AgentTool.Load"
-          then Some (Ok, "AgentTool.Load\n  res=2\n")
+          then Some (Wire.Ok, "AgentTool.Load\n  res=2\n")
           else None);
   expect_error
     "load_failure_parses_res"
@@ -302,7 +302,7 @@ let () =
   <- Some
        (fun cmd _ ->
           if cmd = "System.Free"
-          then Some (Ok, "System.Free\n  X unloading failed, try /f option\n")
+          then Some (Wire.Ok, "System.Free\n  X unloading failed, try /f option\n")
           else None);
   expect_error
     "unload_in_use_detected"
@@ -316,7 +316,7 @@ let () =
   <- Some
        (fun cmd _ ->
           if cmd = "ORP.Compile"
-          then Some (Ok, "  compiling M\n  pos 5 undef\ncompilation FAILED\n")
+          then Some (Wire.Ok, "  compiling M\n  pos 5 undef\ncompilation FAILED\n")
           else None);
   (match exec w (Data.Compile { name = "M.Mod"; new_symbol = false }) with
    | Data.Compiled { output; failed } ->
@@ -331,7 +331,7 @@ let () =
           if cmd = "ORP.Compile"
           then (
             saw_slash_s := contains ~sub:"M.Mod/s" par;
-            Some (Ok, "  compiling M new symbol file  10 4 ABCD\n"))
+            Some (Wire.Ok, "  compiling M new symbol file  10 4 ABCD\n"))
           else None);
   (match exec w (Data.Compile { name = "M.Mod"; new_symbol = true }) with
    | Data.Compiled { failed; _ } ->
@@ -340,7 +340,8 @@ let () =
    | _ -> check "compile_new_symbol_ok" false);
   let w = new_fake () in
   w.call
-  <- Some (fun cmd _ -> if cmd = "ORP.Compile" then Some (Error, "") else None);
+  <- Some
+       (fun cmd _ -> if cmd = "ORP.Compile" then Some (Wire.Error, "") else None);
   expect_error
     "compile_non_ok_is_bad_status"
     (function
@@ -349,14 +350,14 @@ let () =
     (fun () -> ignore (exec w (Data.Compile { name = "M.Mod"; new_symbol = false })));
   (* call: the log always comes back; the status maps to an in-band failure. *)
   let w = new_fake () in
-  w.call <- Some (fun _ _ -> Some (Trapped, "trap log\n"));
+  w.call <- Some (fun _ _ -> Some (Wire.Trapped, "trap log\n"));
   (match exec w (Data.Call { cmd = "Bad.Cmd"; args = "" }) with
    | Data.Called { log; failure } ->
      eqs "call_trap_log" log "trap log\n";
      check "call_trapped_failure" (failure = Some Error.Trapped)
    | _ -> check "call_trapped_failure" false);
   let w = new_fake () in
-  w.call <- Some (fun _ _ -> Some (Error, ""));
+  w.call <- Some (fun _ _ -> Some (Wire.Error, ""));
   (match exec w (Data.Call { cmd = "Bad.Cmd"; args = "" }) with
    | Data.Called { failure; _ } ->
      check "call_bad_status_failure" (failure = Some (Error.Bad_status 3))

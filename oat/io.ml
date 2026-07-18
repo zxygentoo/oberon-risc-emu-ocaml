@@ -1,6 +1,6 @@
 (** The wire codec and the exchange discipline (see io.mli). *)
 
-open Data.Wire
+module Wire = Data.Wire
 
 let sync_req = 0xA5
 let sync_resp = 0x5A
@@ -22,16 +22,16 @@ let name_field name =
 ;;
 
 let encode_request = function
-  | Put { name; data } ->
+  | Wire.Put { name; data } ->
     String.concat
       ""
       [ byte sync_req; byte op_put; name_field name; le32 (String.length data); data ]
-  | Get { name } -> String.concat "" [ byte sync_req; byte op_get; name_field name ]
-  | Call { cmd; par } ->
+  | Wire.Get { name } -> String.concat "" [ byte sync_req; byte op_get; name_field name ]
+  | Wire.Call { cmd; par } ->
     String.concat
       ""
       [ byte sync_req; byte op_call; name_field cmd; le32 (String.length par); par ]
-  | Edit { name; old; new_ } ->
+  | Wire.Edit { name; old; new_ } ->
     String.concat
       ""
       [ byte sync_req
@@ -59,7 +59,7 @@ let read_response recv =
   let length = u32 (Bytes.unsafe_to_string len) 0 in
   let payload = Bytes.create length in
   if length > 0 then recv payload;
-  { status = status_of_byte status; payload = Bytes.unsafe_to_string payload }
+  { Wire.status = Wire.status_of_byte status; payload = Bytes.unsafe_to_string payload }
 ;;
 
 let retriable = function
@@ -86,6 +86,10 @@ let send device ~retries request =
 ;;
 
 module For_tests = struct
+  let encode_request = encode_request
+  let read_response = read_response
+  let with_retries = with_retries
+
   let parse_request frame =
     if Char.code frame.[0] <> sync_req then failwith "bad request sync";
     let op = Char.code frame.[1] in
@@ -100,21 +104,25 @@ module For_tests = struct
       b
     in
     if op = op_put
-    then Put { name; data = blob () }
+    then Wire.Put { name; data = blob () }
     else if op = op_get
-    then Get { name }
+    then Wire.Get { name }
     else if op = op_call
-    then Call { cmd = name; par = blob () }
+    then Wire.Call { cmd = name; par = blob () }
     else if op = op_edit
     then (
       let old = blob () in
-      Edit { name; old; new_ = blob () })
+      Wire.Edit { name; old; new_ = blob () })
     else failwith (Printf.sprintf "bad op %d" op)
   ;;
 
-  let encode_response { status; payload } =
+  let encode_response ({ status; payload } : Wire.response) =
     String.concat
       ""
-      [ byte sync_resp; byte (status_byte status); le32 (String.length payload); payload ]
+      [ byte sync_resp
+      ; byte (Wire.status_byte status)
+      ; le32 (String.length payload)
+      ; payload
+      ]
   ;;
 end
