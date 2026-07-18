@@ -1,6 +1,6 @@
 (** The oat command-line surface: argument parsing into a {!Data.request},
     response rendering, and the wiring from a parsed config through {!Io.send}
-    into {!Tools.execute}. The process contract — exit codes, the "oat: error: "
+    into {!Tool_call.execute}. The process contract — exit codes, the "oat: error: "
     prefix — lives in the executable ([oat/bin/oat.ml]). *)
 
 (** The serial connection, one form required (reported at open time, not parse

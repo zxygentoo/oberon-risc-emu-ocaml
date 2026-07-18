@@ -2,10 +2,10 @@
 
     Operation level: one {!request} per oat subcommand and one {!response} per
     typed result. {!Cli} parses argv into a request and renders the response;
-    {!Tools.execute} maps one onto the other.
+    {!Tool_call.execute} maps one onto the other.
 
     Wire level ({!Wire}): the four-opcode REQUEST/RESPONSE grammar oat speaks to
-    [AgentTool.Mod] on the device. {!Tools} exchanges typed wire values over the
+    [AgentTool.Mod] on the device. {!Tool_call} exchanges typed wire values over the
     {!Wire.t} seam; only {!Io} (and the device itself) sees their byte encoding. *)
 
 module Wire : sig
@@ -57,12 +57,12 @@ module Wire : sig
   (** Longest OLD fragment (in device bytes, after LF -> CR conversion) that an
       EDIT request may carry — the device matches inside a fixed buffer. Keep in
       sync with [editLim] in [oat/Mod/Common/AgentProtocol.Mod].
-      {!Tools}'s edit falls back to the GET+PUT path for anything longer. *)
+      {!Tool_call}'s edit falls back to the GET+PUT path for anything longer. *)
   val edit_old_limit : int
 
-  (** The wire itself: one REQUEST in, one RESPONSE back. [Io.send device] is the
-      production implementation; tools tests plug in an in-memory fake device.
-      The seam between {!Tools} and {!Io}. *)
+  (** The wire itself: one REQUEST in, one RESPONSE back. [Io.send device] is
+      the production implementation; the tool_call tests plug in an in-memory
+      fake device. The seam between {!Tool_call} and {!Io}. *)
   type t = request -> response
 end
 

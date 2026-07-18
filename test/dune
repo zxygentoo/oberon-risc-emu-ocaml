@@ -63,7 +63,7 @@
 ; oat tests (the serial client for AgentTool.Mod): the wire codec + retry
 ; policy + full exchanges over host pipes (io), the byte channel over host
 ; pipes with forked children playing the device (device), the typed operations
-; over an in-memory wire-typed fake (tools), CLI parsing and response rendering
+; over an in-memory wire-typed fake (tool_call), CLI parsing and response rendering
 ; (cli), and the error contract (error). The live battery against a booted
 ; image is separate: test/integration.sh, via `make test-po`/`test-eo`.
 
@@ -71,7 +71,7 @@
  (names
   test_oat_io
   test_oat_device
-  test_oat_tools
+  test_oat_tool_call
   test_oat_cli
   test_oat_error)
  (libraries oat unix test_harness))

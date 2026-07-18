@@ -277,7 +277,7 @@ let run cfg =
       Data.Write { path; content }
     | request -> request
   in
-  render (Tools.execute (Io.send device ~retries) request)
+  render (Tool_call.execute (Io.send device ~retries) request)
 ;;
 
 module For_tests = struct

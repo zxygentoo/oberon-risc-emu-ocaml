@@ -1,4 +1,4 @@
-(* Tools-layer tests: every operation exercised through Tools.execute — the
+(* Tool_call tests: every operation exercised through Tool_call.execute — the
    module's whole surface — against an in-memory fake of the Oberon side
    speaking typed wire values over the Data.Wire.t seam (the byte codec around
    that seam is Io's, tested in test_oat_io). *)
@@ -149,7 +149,7 @@ let expect_error name pred f =
 
 (* --- shorthands over the one surface --- *)
 
-let exec w req = Tools.execute (wire_of w) req
+let exec w req = Tool_call.execute (wire_of w) req
 
 let read w path =
   match exec w (Data.Read path) with
@@ -233,7 +233,7 @@ let () =
       | _ -> false)
     (fun () ->
        let always_trapped _ = { Wire.status = Wire.Trapped; payload = "" } in
-       Tools.execute always_trapped (Data.Edit { path = "M.Mod"; old = "a"; new_ = "b" }));
+       Tool_call.execute always_trapped (Data.Edit { path = "M.Mod"; old = "a"; new_ = "b" }));
   (* delete. *)
   let w = with_file (new_fake ()) "M.Mod" "x\r" in
   (match exec w (Data.Delete "M.Mod") with
@@ -365,5 +365,5 @@ let () =
   (match exec (new_fake ()) (Data.Call { cmd = "Any.Cmd"; args = "" }) with
    | Data.Called { failure = None; _ } -> check "call_ok_no_failure" true
    | _ -> check "call_ok_no_failure" false);
-  summary "oat tools checks"
+  summary "oat tool_call checks"
 ;;

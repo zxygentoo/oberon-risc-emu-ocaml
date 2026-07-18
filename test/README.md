@@ -25,7 +25,7 @@ What's in the default run:
   `test_fsutil`, `test_seed`), and oat, the live-system serial client
   (`test_oat_io` — golden wire frames, the retry policy, and full exchanges
   over host pipes, `test_oat_device` — the byte channel over host pipes with
-  forked children playing the device, `test_oat_tools` — the typed operations
+  forked children playing the device, `test_oat_tool_call` — the typed operations
   over an in-memory wire-typed fake, `test_oat_cli` — parsing and response
   rendering, `test_oat_error`).
 - **property tests** (QCheck) — `test_prop` (oracle-free laws: U32 algebra,
