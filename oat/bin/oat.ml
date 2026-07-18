@@ -7,19 +7,22 @@
     transport/protocol/argument — under the "oat: error: " prefix. Everything
     else lives in {!Oat.Cli}. *)
 
+module Cli = Oat.Cli
+module Error = Oat.Error
+
 let fail_with code msg =
   Printf.eprintf "oat: error: %s\n" msg;
   exit code
 ;;
 
 let () =
-  match Oat.Cli.parse_argv (List.tl (Array.to_list Sys.argv)) with
-  | Oat.Cli.Help -> print_string Oat.Cli.usage
-  | Oat.Cli.Version -> Printf.printf "oat %s\n" Oberon_tools.Tool_cli.version
-  | Oat.Cli.Invalid msg -> fail_with 2 (msg ^ "\nFor more information, try '--help'.")
-  | Oat.Cli.Config cfg ->
-    (try Oat.Cli.run cfg with
-     | Oat.Error.Error e -> fail_with (Oat.Error.exit_code e) (Oat.Error.message e)
+  match Cli.parse_argv (List.tl (Array.to_list Sys.argv)) with
+  | Cli.Help -> print_string Cli.usage
+  | Cli.Version -> Printf.printf "oat %s\n" Oberon_tools.Tool_cli.version
+  | Cli.Invalid msg -> fail_with 2 (msg ^ "\nFor more information, try '--help'.")
+  | Cli.Config cfg ->
+    (try Cli.run cfg with
+     | Error.Error e -> fail_with (Error.exit_code e) (Error.message e)
      | Sys_error m -> fail_with 2 m
      | Unix.Unix_error (e, fn, arg) ->
        fail_with 2 (Printf.sprintf "%s (%s %s)" (Unix.error_message e) fn arg))
