@@ -37,3 +37,12 @@ let sar a n = (to_i32 a asr n) land mask
 
 (** Rotate right by [n] in [0, 31]. *)
 let ror a n = if n = 0 then a else (a lsr n) lor (a lsl (32 - n)) land mask
+
+(** The [u32] whose bits are [x] (undoes [Int32]'s sign extension). *)
+let of_int32 x = Int32.to_int x land mask
+
+(** The [u32] at byte offset [pos] of [s], little-endian. *)
+let get_le s pos = of_int32 (String.get_int32_le s pos)
+
+(** Write [v]'s low 32 bits at byte offset [pos] of [b], little-endian. *)
+let set_le b pos v = Bytes.set_int32_le b pos (Int32.of_int v)

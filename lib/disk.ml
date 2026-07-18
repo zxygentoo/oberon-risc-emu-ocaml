@@ -46,7 +46,7 @@ let read_sector fd buf off =
      fill 0
    | None -> ());
   for i = 0 to 127 do
-    buf.(off + i) <- Int32.to_int (Bytes.get_int32_le bytes (i * 4)) land U32.mask
+    buf.(off + i) <- U32.of_int32 (Bytes.get_int32_le bytes (i * 4))
   done
 ;;
 
@@ -56,7 +56,7 @@ let write_sector fd buf =
   | Some fd ->
     let bytes = Bytes.make 512 '\000' in
     for i = 0 to 127 do
-      Bytes.set_int32_le bytes (i * 4) (Int32.of_int buf.(i))
+      U32.set_le bytes (i * 4) buf.(i)
     done;
     let rec flush pos =
       if pos < 512

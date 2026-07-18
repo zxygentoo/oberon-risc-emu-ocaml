@@ -9,7 +9,6 @@ MODULE AgentTool;  (*serial agent server for the oberon-agent skill -- Project O
   VAR
     W: Texts.Writer;                   (*Log/output writer for the commands*)
     parF: Display.Frame;               (*dummy frame for Oberon.SetPar; cmd/pos start at 0*)
-    pfx: ARRAY 32 OF CHAR;
     ownLog: Texts.Text;                (*installed as Oberon.Log if none exists yet at boot*)
 
   (* --- the variant's command executor (CALL semantics) --- *)
@@ -36,27 +35,18 @@ MODULE AgentTool;  (*serial agent server for the oberon-agent skill -- Project O
     Texts.Append(Oberon.Log, W.buf)
   END Version;
 
-  PROCEDURE Prefixed(p, s: ARRAY OF CHAR): BOOLEAN;
-    VAR i: INTEGER;
-  BEGIN i := 0;
-    WHILE (p[i] # 0X) & (p[i] = s[i]) DO INC(i) END;
-    RETURN p[i] = 0X
-  END Prefixed;
-
   PROCEDURE FileEntry(fn: FileDir.FileName; sec: INTEGER; VAR continue: BOOLEAN);
     VAR hp: FileDir.FileHeader;
   BEGIN
-    IF Prefixed(pfx, fn) THEN
-      Kernel.GetSector(sec, hp);
-      Texts.WriteString(W, fn); Texts.Write(W, 9X);
-      Texts.WriteInt(W, hp.aleng*FileDir.SectorSize + hp.bleng - FileDir.HeaderSize, 1);
-      Texts.Write(W, 9X); Texts.WriteClock(W, hp.date); Texts.WriteLn(W)
-    END;
+    Kernel.GetSector(sec, hp);
+    Texts.WriteString(W, fn); Texts.Write(W, 9X);
+    Texts.WriteInt(W, hp.aleng*FileDir.SectorSize + hp.bleng - FileDir.HeaderSize, 1);
+    Texts.Write(W, 9X); Texts.WriteClock(W, hp.date); Texts.WriteLn(W);
     continue := TRUE
   END FileEntry;
 
-  PROCEDURE ListFiles*;
-    VAR S: Texts.Scanner;
+  PROCEDURE ListFiles*;   (*FileDir.Enumerate calls FileEntry only for names carrying the prefix*)
+    VAR S: Texts.Scanner; pfx: ARRAY 32 OF CHAR;
   BEGIN
     Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
     IF S.class = Texts.Name THEN pfx := S.s ELSE pfx[0] := 0X END;

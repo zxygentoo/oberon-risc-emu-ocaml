@@ -1,4 +1,4 @@
-(** The oat command-line surface (port of oat's [cli.rs] + [main.rs]). *)
+(** The oat command-line surface: parse argv, render responses, wire the layers. *)
 
 type serial =
   | Device of string
@@ -7,36 +7,13 @@ type serial =
       ; fifo_out : string
       }
 
-type command =
-  | Check
-  | Read of string
-  | Write of string
-  | Edit of
-      { path : string
-      ; old : string
-      ; new_ : string
-      }
-  | Delete of string
-  | List_files of string
-  | List_modules
-  | Compile of
-      { name : string
-      ; new_symbol : bool
-      }
-  | Load of string
-  | Unload of string
-  | Call of
-      { cmd : string
-      ; args : string
-      }
-
 type config =
   { timeout : float
   ; baud : int
   ; char_delay_us : int
   ; retries : int
   ; serial : serial option
-  ; command : command
+  ; command : Data.request
   }
 
 type parsed =
@@ -45,9 +22,15 @@ type parsed =
   | Version
   | Invalid of string
 
+let default_timeout = 15.0
+let default_baud = 115200
+let default_char_delay_us = 600
+let default_retries = 3
+
 let usage =
-  "drive AgentTool.Mod on a live Project Oberon or Extended Oberon system over a \
-   serial link\n\n\
+  Printf.sprintf
+    "drive AgentTool.Mod on a live Project Oberon or Extended Oberon system over a \
+     serial link\n\n\
    A stateless CLI: each invocation opens the serial line, runs one command, prints\n\
    its result, and exits. The wire protocol is PUT/GET/CALL/EDIT — four opcodes\n\
    between the host and AgentTool.Mod on the device.\n\n\
@@ -72,13 +55,13 @@ let usage =
   \  call CMD [ARGS]\n\
   \                 Run any Oberon command 'Mod.Proc'; Log delta -> stdout\n\n\
    Options:\n\
-  \  --timeout SECS       Serial read timeout per request, in seconds [default: 15]\n\
+  \  --timeout SECS       Serial read timeout per request, in seconds [default: %g]\n\
   \  --baud RATE          Baud rate for a real serial device (--serial); ignored\n\
-  \                       for FIFO pairs [default: 115200]\n\
+  \                       for FIFO pairs [default: %d]\n\
   \  --char-delay-us US   Inter-byte delay for a real serial device (--serial), in\n\
-  \                       microseconds; ignored for FIFOs [default: 600]\n\
+  \                       microseconds; ignored for FIFOs [default: %d]\n\
   \  --retries N          Re-send a request this many times if it desyncs on a real\n\
-  \                       serial device (--serial); ignored for FIFOs [default: 3]\n\
+  \                       serial device (--serial); ignored for FIFOs [default: %d]\n\
   \  -h, --help           Print help\n\
   \  --version            Print version\n\n\
    Serial connection (one form required):\n\
@@ -93,6 +76,10 @@ let usage =
   \  mkfifo /tmp/p.in /tmp/p.out                                              # once\n\
   \  risc --serial-in /tmp/p.in --serial-out /tmp/p.out DiskImage/ProjectOberon.dsk &\n\
   \  oat --serial-in /tmp/p.in --serial-out /tmp/p.out check\n"
+    default_timeout
+    default_baud
+    default_char_delay_us
+    default_retries
 ;;
 
 (* Split [--opt=value] into [--opt; value] so the parser only handles [--opt value]. *)
@@ -116,37 +103,39 @@ let fail msg = raise (Fail msg)
    on the line but valid only with compile (the Rust CLI scoped it via clap). *)
 let command_of ~new_symbol positionals =
   let arity_err name = fail (Printf.sprintf "wrong number of arguments for '%s'" name) in
-  let command =
+  (* The annotation disambiguates the constructors requests share with responses
+     (Read; the past-tense scheme keeps the rest apart). *)
+  let command : Data.request =
     match positionals with
     | [] -> fail "missing command"
-    | [ "check" ] -> Check
-    | [ "read"; path ] -> Read path
-    | [ "write"; path ] -> Write path
-    | [ "edit"; path; old; new_ ] -> Edit { path; old; new_ }
-    | [ "delete"; path ] -> Delete path
-    | [ "list-files" ] -> List_files ""
-    | [ "list-files"; prefix ] -> List_files prefix
-    | [ "list-modules" ] -> List_modules
-    | [ "compile"; name ] -> Compile { name; new_symbol = new_symbol <> None }
-    | [ "load"; name ] -> Load name
-    | [ "unload"; name ] -> Unload name
-    | [ "call"; cmd ] -> Call { cmd; args = "" }
-    | [ "call"; cmd; args ] -> Call { cmd; args }
+    | [ "check" ] -> Data.Check
+    | [ "read"; path ] -> Data.Read path
+    | [ "write"; path ] -> Data.Write { path; content = "" }
+    | [ "edit"; path; old; new_ ] -> Data.Edit { path; old; new_ }
+    | [ "delete"; path ] -> Data.Delete path
+    | [ "list-files" ] -> Data.List_files ""
+    | [ "list-files"; prefix ] -> Data.List_files prefix
+    | [ "list-modules" ] -> Data.List_modules
+    | [ "compile"; name ] -> Data.Compile { name; new_symbol = new_symbol <> None }
+    | [ "load"; name ] -> Data.Load name
+    | [ "unload"; name ] -> Data.Unload name
+    | [ "call"; cmd ] -> Data.Call { cmd; args = "" }
+    | [ "call"; cmd; args ] -> Data.Call { cmd; args }
     | (( "check" | "read" | "write" | "edit" | "delete" | "list-files" | "list-modules"
        | "compile" | "load" | "unload" | "call" ) as name)
       :: _ -> arity_err name
     | name :: _ -> fail (Printf.sprintf "unrecognized command %S" name)
   in
   match command, new_symbol with
-  | Compile _, _ | _, None -> command
+  | Data.Compile _, _ | _, None -> command
   | _, Some spelling -> fail (Printf.sprintf "unexpected argument '%s'" spelling)
 ;;
 
 let parse_argv raw_args =
-  let timeout = ref 15.0
-  and baud = ref 115200
-  and char_delay_us = ref 600
-  and retries = ref 3
+  let timeout = ref default_timeout
+  and baud = ref default_baud
+  and char_delay_us = ref default_char_delay_us
+  and retries = ref default_retries
   and serial = ref None
   and serial_in = ref None
   and serial_out = ref None
@@ -164,8 +153,8 @@ let parse_argv raw_args =
     | Some n when n >= 0 -> r := n
     | _ -> fail (Printf.sprintf "invalid %s %S" name v)
   in
-  (* One entry per value-taking option keeps the consuming arm and the
-     requires-a-value arm below in sync. *)
+  (* One entry per value-taking option; a single arm below both consumes the
+     value and reports it missing. *)
   let value_opts =
     [ "--timeout", float_opt "--timeout" timeout
     ; "--baud", uint_opt "--baud" baud
@@ -179,16 +168,17 @@ let parse_argv raw_args =
   let rec loop = function
     | [] -> ()
     | "--" :: rest -> positionals := List.rev_append rest !positionals
-    | o :: v :: rest when List.mem_assoc o value_opts ->
-      (List.assoc o value_opts) v;
-      loop rest
+    | o :: rest when List.mem_assoc o value_opts ->
+      (match rest with
+       | v :: rest ->
+         (List.assoc o value_opts) v;
+         loop rest
+       | [] -> fail (Printf.sprintf "option %s requires a value" o))
     | (("-s" | "--new-symbol") as spelling) :: rest ->
       new_symbol := Some spelling;
       loop rest
     | ("--help" | "-h") :: _ -> help := true
     | "--version" :: _ -> version := true
-    | [ o ] when List.mem_assoc o value_opts ->
-      fail (Printf.sprintf "option %s requires a value" o)
     | opt :: _ when String.length opt > 1 && opt.[0] = '-' ->
       fail (Printf.sprintf "unknown option %s" opt)
     | arg :: rest ->
@@ -224,7 +214,7 @@ let parse_argv raw_args =
   | Fail e -> Invalid e
 ;;
 
-(* --- subcommand handlers --- *)
+(* --- rendering --- *)
 
 (* Print a tool log to stdout, ensuring a trailing newline when non-empty (so the
    next stderr line doesn't get glued onto the last log line). *)
@@ -235,77 +225,68 @@ let print_log log =
     if not (String.ends_with ~suffix:"\n" log) then print_newline ())
 ;;
 
-let cmd_check send =
-  let start = Unix.gettimeofday () in
-  let version = Tools.version send in
-  let rtt_ms = int_of_float ((Unix.gettimeofday () -. start) *. 1000.0) in
-  if version = ""
-  then (
-    Printf.printf "ok: connected (round-trip %dms)\n" rtt_ms;
-    print_string
-      "    warning: device reported no version string — image may lack the\n\
-      \    System.Version patch. Variant detection is unavailable; proceed at\n\
-      \    your own risk (PO-style unsafe unload may apply).\n")
-  else Printf.printf "ok: %s (round-trip %dms)\n" version rtt_ms
+let render = function
+  | Data.Checked { version; rtt_ms } ->
+    if version = ""
+    then (
+      Printf.printf "ok: connected (round-trip %dms)\n" rtt_ms;
+      print_string
+        "    warning: device reported no version string — image may lack the\n\
+        \    System.Version patch. Variant detection is unavailable; proceed at\n\
+        \    your own risk (PO-style unsafe unload may apply).\n")
+    else Printf.printf "ok: %s (round-trip %dms)\n" version rtt_ms
+  | Data.Read content -> print_string content
+  | Data.Written { path; bytes } -> Printf.printf "ok wrote %s (%d bytes)\n" path bytes
+  | Data.Edited { path } -> Printf.printf "ok edited %s\n" path
+  | Data.Deleted { path } -> Printf.printf "ok deleted %s\n" path
+  | Data.Listed_files listing | Data.Listed_modules listing -> print_string listing
+  | Data.Compiled { output; failed } ->
+    print_log output;
+    if failed then Error.fail Error.Compile_failed
+  | Data.Loaded name -> Printf.printf "ok loaded %s\n" name
+  | Data.Unloaded { name; log } ->
+    Printf.printf "ok unloaded %s%s\n" name (Error.indented_log log)
+  | Data.Called { log; failure } ->
+    print_log log;
+    Option.iter Error.fail failure
 ;;
 
-let dispatch send = function
-  | Check -> cmd_check send
-  | Read path -> print_string (Tools.read_file send path)
-  | Write path ->
-    (* Host I/O failures become Error.Io at the raise site, so Error.exit_code
-       stays the sole owner of the exit-code partition. *)
-    let content =
-      try In_channel.input_all In_channel.stdin with
-      | Sys_error m -> Error.fail (Error.Io m)
-    in
-    Tools.write_file send ~path ~content;
-    Printf.printf "ok wrote %s (%d bytes)\n" path (String.length content)
-  | Edit { path; old; new_ } ->
-    Tools.edit_file send ~path ~old ~new_;
-    Printf.printf "ok edited %s\n" path
-  | Delete path ->
-    Tools.delete_file send path;
-    Printf.printf "ok deleted %s\n" path
-  | List_files prefix -> print_string (Tools.list_files send ~prefix)
-  | List_modules -> print_string (Tools.list_modules send)
-  | Compile { name; new_symbol } ->
-    let r = Tools.compile_module send ~name ~new_symbol in
-    print_log r.output;
-    if r.failed then Error.fail Error.Compile_failed
-  | Load name ->
-    Tools.load_module send name;
-    Printf.printf "ok loaded %s\n" name
-  | Unload name ->
-    let log = Tools.unload_module send name in
-    Printf.printf "ok unloaded %s\n" name;
-    (match String.trim log with
-     | "" -> ()
-     | trimmed ->
-       List.iter (Printf.printf "  %s\n") (String.split_on_char '\n' trimmed))
-  | Call { cmd; args } ->
-    let r = Tools.run_command send ~cmd ~args in
-    print_log r.log;
-    Tools.call_outcome r
-;;
+(* --- wiring --- *)
 
 let run cfg =
   let timeout = Float.max cfg.timeout 0.001 in
-  (* Retry only the lossy real-serial path. The FIFO/emulator transport is lossless
+  (* Retry only the lossy real-serial path. The FIFO/emulator channel is lossless
      and back-pressured, so a timeout there is a genuine hang — pass it straight
      through rather than waiting out N more timeouts. *)
-  let transport, retries =
+  let device, retries =
     match cfg.serial with
     | None -> Error.fail Error.No_serial
     | Some (Device path) ->
-      ( Transport.open_path
+      ( Device.open_device
           path
           ~timeout
           ~baud:cfg.baud
           ~char_delay:(float_of_int cfg.char_delay_us /. 1_000_000.0)
       , cfg.retries )
     | Some (Fifos { fifo_in; fifo_out }) ->
-      Transport.open_fifos ~in_path:fifo_in ~out_path:fifo_out ~timeout, 0
+      Device.open_fifos ~in_path:fifo_in ~out_path:fifo_out ~timeout, 0
   in
-  dispatch (Retry.wrap ~retries (Transport.send transport)) cfg.command
+  let request =
+    match cfg.command with
+    | Data.Write { path; content = _ } ->
+      (* stdin is read at the process edge, once the device is open. Host I/O
+         failures become Error.Io at the raise site, so Error.exit_code stays the
+         sole owner of the exit-code partition. *)
+      let content =
+        try In_channel.input_all In_channel.stdin with
+        | Sys_error m -> Error.fail (Error.Io m)
+      in
+      Data.Write { path; content }
+    | request -> request
+  in
+  render (Tool_call.execute (Io.send device ~retries) request)
 ;;
+
+module For_tests = struct
+  let render = render
+end

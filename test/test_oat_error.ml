@@ -1,6 +1,5 @@
-(* Error-contract tests, ported from oat's error.rs unit tests: the exit-code
-   partition documented in --help and SKILL.md, and the message bodies that carry
-   hints and indented logs. *)
+(* Error-contract tests for oat: the exit-code partition documented in --help
+   and SKILL.md, and the message bodies that carry hints and indented logs. *)
 
 open Oat
 open Test_harness
@@ -26,7 +25,7 @@ let () =
   (* Transport / protocol / argument errors -> 2. *)
   eq "no_serial_is_2" (Error.exit_code Error.No_serial) 2;
   eq "eof_is_2" (Error.exit_code Error.Eof) 2;
-  eq "bad_name_is_2" (Error.exit_code (Error.Bad_name { name = ""; len = 0 })) 2;
+  eq "bad_name_is_2" (Error.exit_code (Error.Bad_name "")) 2;
   eq
     "timeout_is_2"
     (Error.exit_code (Error.Timeout { secs = 1.0; got = 0; want = 1 }))

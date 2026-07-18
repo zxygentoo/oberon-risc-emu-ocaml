@@ -167,9 +167,10 @@ scanner; PO calls `Modules.Free(NAME)` which:
 5. If they say no, suggest alternatives: keep editing without unload, reboot the
    emulator + reload from disk, or run with an EO image instead.
 
-Also: `oat unload` cannot reliably detect an in-use refusal on PO (the EO-only
-"unloading failed" log phrase doesn't appear). Verify the unload took effect with
-`oat list-modules` afterward.
+Also: PO only refuses an unload (reported by `oat unload` as "unload refused")
+when other loaded *modules* still import the target. Live heap objects and open
+viewers don't count as imports, so that unload "succeeds" and leaves the dangling
+references above. Verify the outcome with `oat list-modules` afterward.
 
 ### Unknown variant (no version reported)
 

@@ -1,11 +1,11 @@
-(** oat's error vocabulary, message rendering, and exit-code mapping (port of oat's
-    [error.rs]). *)
+(** oat's error vocabulary, message rendering, and exit-code mapping. *)
 
 type t =
   | No_serial
-  | Bad_name of
-      { name : string
-      ; len : int
+  | Bad_name of string
+  | Put_too_large of
+      { bytes : int
+      ; limit : int
       }
   | Open_fifo of
       { path : string
@@ -53,14 +53,15 @@ let exit_code = function
   | _ -> 2
 ;;
 
-(* Modules.Load failure codes (PO 2013 Modules.Mod). *)
+(* Modules.Load failure codes. 1-4 mean the same on PO 2013 and EO; "no module
+   space" is res=7 on PO but res=5 on EO (which renumbered the codes above 4),
+   and the host cannot tell the variants apart here, so both map to that hint. *)
 let res_hint = function
   | 1 -> Some "name invalid or .rsc not found — has the module been compiled?"
   | 2 -> Some "bad symbol-file key — recompile importers or compile with --new-symbol"
   | 3 -> Some "import key conflict — recompile importers or unload them first"
   | 4 -> Some "corrupted object file"
-  | 5 -> Some "command not found in module"
-  | 7 -> Some "no module space — unload unused modules"
+  | 5 | 7 -> Some "no module space — unload unused modules"
   | _ -> None
 ;;
 
@@ -101,8 +102,13 @@ let load_failed_message res log =
 let message = function
   | No_serial ->
     "no serial connection specified — pass --serial or --serial-in/--serial-out"
-  | Bad_name { name; len } ->
-    Printf.sprintf "name length %d out of range 1..255: %S" len name
+  | Bad_name name ->
+    Printf.sprintf "name length %d out of range 1..255: %S" (String.length name) name
+  | Put_too_large { bytes; limit } ->
+    Printf.sprintf
+      "content is %d bytes — over the device's %d-byte PUT buffer; split the file"
+      bytes
+      limit
   | Open_fifo { path; err } -> open_fifo_message path err
   | Open_serial { path; err } ->
     Printf.sprintf "cannot open serial device %s: %s" path (Unix.error_message err)

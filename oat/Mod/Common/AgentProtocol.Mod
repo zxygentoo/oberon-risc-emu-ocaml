@@ -8,12 +8,12 @@ MODULE AgentProtocol;  (*the oat wire protocol, shared verbatim by both variants
 
   CONST
     data = -56; stat = -52;            (*RS232 MMIO; status bit0 = rx, bit1 = tx*)
-    sync = 0A5H; rsync = 05AH;         (*request / response frame start*)
-    opPut = 1; opGet = 2; opCall = 3; opEdit = 4;
-    stOk* = 0; stNotFound* = 1; stTrapped = 2; stError* = 3; stNoMatch = 4; stNotUnique = 5;
-    editLim = 1024;                    (*max OLD length; oat falls back to GET+PUT beyond -- keep in sync with protocol.rs EDIT_OLD_LIMIT*)
+    sync = 0A5H; rsync = 05AH;         (*request / response frame start -- mirrored in oat/io.ml*)
+    opPut = 1; opGet = 2; opCall = 3; opEdit = 4;                    (*mirrored in oat/io.ml*)
+    stOk* = 0; stNotFound* = 1; stTrapped = 2; stError* = 3; stNoMatch = 4; stNotUnique = 5;  (*mirrored in oat/data.ml*)
+    editLim = 1024;                    (*max OLD length; oat falls back to GET+PUT beyond -- keep in sync with edit_old_limit in oat/data.ml*)
     recLim = 4000000;                  (*Rec busy-wait cap (~1s @25MHz): a lost byte aborts the frame instead of hanging the whole Oberon loop*)
-    maxPut = 10000H;                   (*64 KiB: PUT receive-buffer size and length cap (a larger PUT, or a corrupt count, gets stError)*)
+    maxPut = 10000H;                   (*64 KiB: PUT receive-buffer size and length cap (a larger PUT, or a corrupt count, gets stError) -- keep in sync with put_limit in oat/data.ml*)
 
   TYPE
     Executor* = PROCEDURE (cmd: ARRAY OF CHAR; par: Texts.Text): INTEGER;
@@ -29,8 +29,8 @@ MODULE AgentProtocol;  (*the oat wire protocol, shared verbatim by both variants
     PW: Texts.Writer;                  (*builds CALL's par text*)
     par: Texts.Text;
     name, cmd: ARRAY 64 OF CHAR;
-    M: INTEGER;                        (*DoEdit pattern length; global because Forward can't see DoEdit's locals*)
-    pat, win: ARRAY editLim OF CHAR;   (*DoEdit pattern + sliding match window*)
+    M, org: INTEGER;                   (*DoEdit pattern length + ring start; global because Forward can't see DoEdit's locals*)
+    pat, win: ARRAY editLim OF CHAR;   (*DoEdit pattern + ring-buffer match window; win[org] is the window's first char*)
     dis: ARRAY 256 OF INTEGER;         (*Boyer-Moore displacement table*)
     pbuf: ARRAY maxPut OF BYTE;        (*DoPut payload buffer: receive the whole frame, then write*)
 
@@ -143,16 +143,21 @@ MODULE AgentProtocol;  (*the oat wire protocol, shared verbatim by both variants
     Boyer-Moore, restated to count every non-overlapping match instead of
     stopping at the first.*)
 
-  PROCEDURE Forward(n: INTEGER; VAR R: Texts.Reader);   (*slide win left by n, refill from R*)
-    VAR m, j: INTEGER;
-  BEGIN m := M - n; j := 0;
-    WHILE j < m DO win[j] := win[n + j]; INC(j) END;
-    WHILE j < M DO Texts.Read(R, win[j]); INC(j) END
+  PROCEDURE Forward(n: INTEGER; VAR R: Texts.Reader);   (*advance the window by n: the n new
+    chars overwrite the n oldest in place, so a shift costs O(n) where sliding the array
+    would cost O(M) -- the difference between a linear and a quadratic scan when the
+    displacements are small*)
+    VAR j: INTEGER;
+  BEGIN j := 0;
+    WHILE j < n DO Texts.Read(R, win[org]); INC(org);
+      IF org = M THEN org := 0 END ;
+      INC(j)
+    END
   END Forward;
 
   PROCEDURE DoEdit;
     VAR T: Texts.Text; R: Texts.Reader; B: Texts.Buffer;
-      oldLen, newLen, i, j, n, pos, count, first: INTEGER;
+      oldLen, newLen, i, j, k, n, pos, count, first: INTEGER;
       x: BYTE; done: BOOLEAN;
   BEGIN RecName(name);
     RecInt(oldLen); i := 0;                              (*OLD -> pat; excess drained*)
@@ -181,14 +186,17 @@ MODULE AgentProtocol;  (*the oat wire protocol, shared verbatim by both variants
           j := 0; WHILE j < 256 DO dis[j] := M; INC(j) END;
           j := 0; WHILE j < M - 1 DO dis[ORD(pat[j])] := M - 1 - j; INC(j) END;
           Texts.OpenReader(R, T, 0);
-          Forward(M, R); pos := M; done := FALSE;
+          org := 0; Forward(M, R); pos := M; done := FALSE;
           REPEAT
-            j := M;
-            REPEAT DEC(j) UNTIL (j < 0) OR (win[j] # pat[j]);
+            k := org + M - 1; IF k >= M THEN DEC(k, M) END ;  (*ring index of the window's last char*)
+            n := dis[ORD(win[k])];                       (*shift by that char, unless a full match below*)
+            j := M - 1;
+            WHILE (j >= 0) & (win[k] = pat[j]) DO DEC(j);
+              IF k = 0 THEN k := M - 1 ELSE DEC(k) END
+            END;
             IF j < 0 THEN INC(count);                    (*match ends at pos*)
               IF first < 0 THEN first := pos - M END;
               n := M                                     (*non-overlapping, like the host counts*)
-            ELSE n := dis[ORD(win[M - 1])]
             END;
             IF pos + n <= T.len THEN Forward(n, R); pos := pos + n ELSE done := TRUE END
           UNTIL done
