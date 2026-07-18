@@ -23,10 +23,11 @@ What's in the default run:
   imagelib's own PNG reader), the host tools (`test_convert`, `test_packonly`,
   `test_image`, `test_resolve`, `test_pipeline`, `test_tool_cli`,
   `test_fsutil`, `test_seed`), and oat, the live-system serial client
-  (`test_oat_protocol` — golden wire frames, `test_oat_tools` — the typed
-  operations over an in-memory fake device wired through the real request
-  codec, `test_oat_transport` — host pipes with forked children playing the
-  device, `test_oat_retry`, `test_oat_cli`, `test_oat_error`).
+  (`test_oat_io` — golden wire frames, the retry policy, and full exchanges
+  over host pipes, `test_oat_device` — the byte channel over host pipes with
+  forked children playing the device, `test_oat_tools` — the typed operations
+  over an in-memory wire-typed fake, `test_oat_cli` — parsing and response
+  rendering, `test_oat_error`).
 - **property tests** (QCheck) — `test_prop` (oracle-free laws: U32 algebra,
   memory round-trips, the Z/N flag invariant, device round-trips) and
   `test_risc5_isa` (codec round-trips, differential encode vs hand-rolled

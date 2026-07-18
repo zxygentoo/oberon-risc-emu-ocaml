@@ -1,6 +1,5 @@
-(* Error-contract tests, ported from oat's error.rs unit tests: the exit-code
-   partition documented in --help and SKILL.md, and the message bodies that carry
-   hints and indented logs. *)
+(* Error-contract tests for oat: the exit-code partition documented in --help
+   and SKILL.md, and the message bodies that carry hints and indented logs. *)
 
 open Oat
 open Test_harness

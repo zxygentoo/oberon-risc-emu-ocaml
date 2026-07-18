@@ -1,5 +1,4 @@
-(** oat's error vocabulary, message rendering, and exit-code mapping (port of oat's
-    [error.rs]). *)
+(** oat's error vocabulary, message rendering, and exit-code mapping. *)
 
 type t =
   | No_serial

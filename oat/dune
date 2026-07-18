@@ -1,7 +1,9 @@
 ; oat — oberon-agent-tool — the stateless serial client for AgentTool.Mod on a
-; live (booted) Oberon system, ported from the oberon-agent Rust CLI: the wire
-; protocol, transport, retry policy, the typed operations, and the CLI surface.
-; Wrapped, so the modules read Oat.Protocol / Oat.Tools / ... from outside.
+; live (booted) Oberon system, ported from the oberon-agent Rust CLI.
+; Layered bottom-up: Data (the operation + wire vocabularies) — Device (the
+; byte channel) — Io (wire codec + retry) — Tools (the typed operations) —
+; Cli (parse / render / wiring); Error is the failure vocabulary they share.
+; Wrapped, so the modules read Oat.Tools / Oat.Io / ... from outside.
 ; The executable lives in bin/; the on-system half lives in Mod/.
 
 (library

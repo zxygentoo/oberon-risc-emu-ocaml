@@ -1,5 +1,4 @@
-(** Serial transport over a PTY (raw mode) or a FIFO pair (port of oat's
-    [transport.rs]). *)
+(** The serial byte channel over a PTY (raw mode) or a FIFO pair. *)
 
 type t =
   { reader : Unix.file_descr
@@ -13,7 +12,13 @@ type t =
        at a time, so the real UART peer — a single-byte register with no flow control
        (the OberonStation RS232R), read by a cooperative poll — can grab each byte
        before the next overruns it. See the oat CLI's [--char-delay-us]. *)
+  ; retries : int
+    (* Re-send budget for a desynced request, honored by [Io.send]. Nonzero only for
+       the lossy real-serial path; the FIFO path is lossless, so a timeout there is a
+       genuine hang and fails straight through. *)
   }
+
+let retries t = t.retries
 
 let rec poll_readable fd timeout =
   match Unix.select [ fd ] [] [] timeout with
@@ -21,9 +26,6 @@ let rec poll_readable fd timeout =
   | exception Unix.Unix_error (Unix.EINTR, _, _) -> poll_readable fd timeout
 ;;
 
-(* Non-blocking: read and discard whatever is already buffered, so a stale or partial
-   response from a prior exchange can't desync this one. Best effort — errors just
-   stop the drain. *)
 let drain_stale t =
   let scratch = Bytes.create 256 in
   let rec go () =
@@ -70,8 +72,7 @@ let write_all fd bytes =
   go 0
 ;;
 
-let send t frame =
-  drain_stale t;
+let write_frame t frame =
   let w = Option.value t.writer ~default:t.reader in
   if t.char_delay = 0.0
   then write_all w (Bytes.of_string frame)
@@ -82,8 +83,7 @@ let send t frame =
       (fun c ->
          write_all w (Bytes.make 1 c);
          Unix.sleepf t.char_delay)
-      frame;
-  Protocol.read_response (recv_exact t)
+      frame
 ;;
 
 (* O_RDWR avoids the open-blocking dance: a FIFO opened read-only blocks until a
@@ -96,13 +96,13 @@ let open_fifo path =
 let open_fifos ~in_path ~out_path ~timeout =
   let writer = open_fifo in_path in
   let reader = open_fifo out_path in
-  { reader; writer = Some writer; timeout; char_delay = 0.0 }
+  { reader; writer = Some writer; timeout; char_delay = 0.0; retries = 0 }
 ;;
 
 (* Raw 8N1 at [baud] — cfmakeraw restated on [Unix.terminal_io] (IEXTEN is not
    exposed there; inert for this byte protocol), plus the line speed. cfmakeraw
    leaves the speed untouched — on a real UART that means whatever the port last had
-   (often not ours), so pin it. FIFO transports skip this path entirely. *)
+   (often not ours), so pin it. FIFO channels skip this path entirely. *)
 let set_raw_mode fd baud =
   let tio = Unix.tcgetattr fd in
   Unix.tcsetattr
@@ -131,7 +131,7 @@ let set_raw_mode fd baud =
     }
 ;;
 
-let open_path path ~timeout ~baud ~char_delay =
+let open_device path ~timeout ~baud ~char_delay ~retries =
   let open_err err = Error.fail (Error.Open_serial { path; err }) in
   let fd =
     try Unix.openfile path [ Unix.O_RDWR; Unix.O_NOCTTY ] 0 with
@@ -139,9 +139,11 @@ let open_path path ~timeout ~baud ~char_delay =
   in
   (try set_raw_mode fd baud with
    | Unix.Unix_error (err, _, _) -> open_err err);
-  { reader = fd; writer = None; timeout; char_delay }
+  { reader = fd; writer = None; timeout; char_delay; retries }
 ;;
 
 module For_tests = struct
-  let make ~reader ~writer ~timeout ~char_delay = { reader; writer; timeout; char_delay }
+  let make ~reader ~writer ~timeout ~char_delay ~retries =
+    { reader; writer; timeout; char_delay; retries }
+  ;;
 end

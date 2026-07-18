@@ -60,18 +60,18 @@
   test_fsutil)
  (libraries oberon_tools test_harness))
 
-; oat tests (the serial client for AgentTool.Mod): wire framing, the retry
-; policy, the typed operations over an in-memory fake device (wired through the
-; real request codec), the transport over host pipes (forked children play the
-; device), CLI parsing, and the error contract. The live battery against a
-; booted image is separate: test/integration.sh, via `make test-po`/`test-eo`.
+; oat tests (the serial client for AgentTool.Mod): the wire codec + retry
+; policy + full exchanges over host pipes (io), the byte channel over host
+; pipes with forked children playing the device (device), the typed operations
+; over an in-memory wire-typed fake (tools), CLI parsing and response rendering
+; (cli), and the error contract (error). The live battery against a booted
+; image is separate: test/integration.sh, via `make test-po`/`test-eo`.
 
 (tests
  (names
-  test_oat_protocol
-  test_oat_retry
+  test_oat_io
+  test_oat_device
   test_oat_tools
-  test_oat_transport
   test_oat_cli
   test_oat_error)
  (libraries oat unix test_harness))

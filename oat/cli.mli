@@ -1,38 +1,15 @@
-(** The oat command-line surface (port of oat's [cli.rs]): argument parsing, the
-    per-subcommand handlers, and the dispatch from parsed arguments into {!Tools}
-    calls. The process contract — exit codes, the "oat: error: " prefix — lives in
-    the executable ([oat/bin/oat.ml]), as [main.rs] does in the Rust oat. *)
+(** The oat command-line surface: argument parsing into a {!Data.request},
+    response rendering, and the wiring from a parsed config through {!Io.send}
+    into {!Tools.execute}. The process contract — exit codes, the "oat: error: "
+    prefix — lives in the executable ([oat/bin/oat.ml]). *)
 
-(** The serial connection, one form required (reported at open time, not parse time,
-    matching the Rust CLI). *)
+(** The serial connection, one form required (reported at open time, not parse
+    time, so the error carries its context). *)
 type serial =
   | Device of string (** [--serial]: existing PTY / serial device. *)
   | Fifos of
       { fifo_in : string (** FIFO the emulator reads (we write). *)
       ; fifo_out : string (** FIFO the emulator writes (we read). *)
-      }
-
-type command =
-  | Check
-  | Read of string
-  | Write of string
-  | Edit of
-      { path : string
-      ; old : string
-      ; new_ : string
-      }
-  | Delete of string
-  | List_files of string (** Name prefix; "" lists all files. *)
-  | List_modules
-  | Compile of
-      { name : string
-      ; new_symbol : bool
-      }
-  | Load of string
-  | Unload of string
-  | Call of
-      { cmd : string
-      ; args : string (** Parameter text scanned via Oberon.Par; "" for none. *)
       }
 
 type config =
@@ -41,7 +18,8 @@ type config =
   ; char_delay_us : int (** Real serial device only; ignored for FIFO pairs. *)
   ; retries : int (** Real serial device only; the FIFO path never retries. *)
   ; serial : serial option
-  ; command : command
+  ; command : Data.request
+    (** For [Write], parsed with [content = ""]; {!run} fills it from stdin. *)
   }
 
 (** Outcome of CLI parsing; the caller owns printing and exiting. *)
@@ -51,12 +29,19 @@ type parsed =
   | Version
   | Invalid of string
 
-(** Parse a raw argument list (the argv tail), so it is testable without [Sys.argv].
-    Options may precede or follow the subcommand; [--] ends option parsing. *)
+(** Parse a raw argument list (the argv tail), so it is testable without
+    [Sys.argv]. Options may precede or follow the subcommand; [--] ends option
+    parsing. *)
 val parse_argv : string list -> parsed
 
 val usage : string
 
-(** Open the transport, wrap it in the retry policy, run the subcommand.
+(** Print one response to stdout — the sole owner of oat's success output. For
+    the log-carrying results ([Compiled], [Called]) the log is printed first,
+    then any in-band failure is raised, so it lands above the error line.
+    @raise Error.Error on such an in-band failure. *)
+val render : Data.response -> unit
+
+(** Open the device, fill a [Write] request from stdin, execute, render.
     @raise Error.Error on any tool- or transport-level failure. *)
 val run : config -> unit

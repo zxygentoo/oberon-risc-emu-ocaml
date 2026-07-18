@@ -1,4 +1,4 @@
-(** The oat command-line surface (port of oat's [cli.rs] + [main.rs]). *)
+(** The oat command-line surface: parse argv, render responses, wire the layers. *)
 
 type serial =
   | Device of string
@@ -7,36 +7,13 @@ type serial =
       ; fifo_out : string
       }
 
-type command =
-  | Check
-  | Read of string
-  | Write of string
-  | Edit of
-      { path : string
-      ; old : string
-      ; new_ : string
-      }
-  | Delete of string
-  | List_files of string
-  | List_modules
-  | Compile of
-      { name : string
-      ; new_symbol : bool
-      }
-  | Load of string
-  | Unload of string
-  | Call of
-      { cmd : string
-      ; args : string
-      }
-
 type config =
   { timeout : float
   ; baud : int
   ; char_delay_us : int
   ; retries : int
   ; serial : serial option
-  ; command : command
+  ; command : Data.request
   }
 
 type parsed =
@@ -119,26 +96,26 @@ let command_of ~new_symbol positionals =
   let command =
     match positionals with
     | [] -> fail "missing command"
-    | [ "check" ] -> Check
-    | [ "read"; path ] -> Read path
-    | [ "write"; path ] -> Write path
-    | [ "edit"; path; old; new_ ] -> Edit { path; old; new_ }
-    | [ "delete"; path ] -> Delete path
-    | [ "list-files" ] -> List_files ""
-    | [ "list-files"; prefix ] -> List_files prefix
-    | [ "list-modules" ] -> List_modules
-    | [ "compile"; name ] -> Compile { name; new_symbol = new_symbol <> None }
-    | [ "load"; name ] -> Load name
-    | [ "unload"; name ] -> Unload name
-    | [ "call"; cmd ] -> Call { cmd; args = "" }
-    | [ "call"; cmd; args ] -> Call { cmd; args }
+    | [ "check" ] -> Data.Check
+    | [ "read"; path ] -> Data.Read path
+    | [ "write"; path ] -> Data.Write { path; content = "" }
+    | [ "edit"; path; old; new_ ] -> Data.Edit { path; old; new_ }
+    | [ "delete"; path ] -> Data.Delete path
+    | [ "list-files" ] -> Data.List_files ""
+    | [ "list-files"; prefix ] -> Data.List_files prefix
+    | [ "list-modules" ] -> Data.List_modules
+    | [ "compile"; name ] -> Data.Compile { name; new_symbol = new_symbol <> None }
+    | [ "load"; name ] -> Data.Load name
+    | [ "unload"; name ] -> Data.Unload name
+    | [ "call"; cmd ] -> Data.Call { cmd; args = "" }
+    | [ "call"; cmd; args ] -> Data.Call { cmd; args }
     | (( "check" | "read" | "write" | "edit" | "delete" | "list-files" | "list-modules"
        | "compile" | "load" | "unload" | "call" ) as name)
       :: _ -> arity_err name
     | name :: _ -> fail (Printf.sprintf "unrecognized command %S" name)
   in
   match command, new_symbol with
-  | Compile _, _ | _, None -> command
+  | Data.Compile _, _ | _, None -> command
   | _, Some spelling -> fail (Printf.sprintf "unexpected argument '%s'" spelling)
 ;;
 
@@ -224,7 +201,7 @@ let parse_argv raw_args =
   | Fail e -> Invalid e
 ;;
 
-(* --- subcommand handlers --- *)
+(* --- rendering --- *)
 
 (* Print a tool log to stdout, ensuring a trailing newline when non-empty (so the
    next stderr line doesn't get glued onto the last log line). *)
@@ -235,77 +212,65 @@ let print_log log =
     if not (String.ends_with ~suffix:"\n" log) then print_newline ())
 ;;
 
-let cmd_check send =
-  let start = Unix.gettimeofday () in
-  let version = Tools.version send in
-  let rtt_ms = int_of_float ((Unix.gettimeofday () -. start) *. 1000.0) in
-  if version = ""
-  then (
-    Printf.printf "ok: connected (round-trip %dms)\n" rtt_ms;
-    print_string
-      "    warning: device reported no version string — image may lack the\n\
-      \    System.Version patch. Variant detection is unavailable; proceed at\n\
-      \    your own risk (PO-style unsafe unload may apply).\n")
-  else Printf.printf "ok: %s (round-trip %dms)\n" version rtt_ms
-;;
-
-let dispatch send = function
-  | Check -> cmd_check send
-  | Read path -> print_string (Tools.read_file send path)
-  | Write path ->
-    (* Host I/O failures become Error.Io at the raise site, so Error.exit_code
-       stays the sole owner of the exit-code partition. *)
-    let content =
-      try In_channel.input_all In_channel.stdin with
-      | Sys_error m -> Error.fail (Error.Io m)
-    in
-    Tools.write_file send ~path ~content;
-    Printf.printf "ok wrote %s (%d bytes)\n" path (String.length content)
-  | Edit { path; old; new_ } ->
-    Tools.edit_file send ~path ~old ~new_;
-    Printf.printf "ok edited %s\n" path
-  | Delete path ->
-    Tools.delete_file send path;
-    Printf.printf "ok deleted %s\n" path
-  | List_files prefix -> print_string (Tools.list_files send ~prefix)
-  | List_modules -> print_string (Tools.list_modules send)
-  | Compile { name; new_symbol } ->
-    let r = Tools.compile_module send ~name ~new_symbol in
-    print_log r.output;
-    if r.failed then Error.fail Error.Compile_failed
-  | Load name ->
-    Tools.load_module send name;
-    Printf.printf "ok loaded %s\n" name
-  | Unload name ->
-    let log = Tools.unload_module send name in
+let render = function
+  | Data.Checked { version; rtt_ms } ->
+    if version = ""
+    then (
+      Printf.printf "ok: connected (round-trip %dms)\n" rtt_ms;
+      print_string
+        "    warning: device reported no version string — image may lack the\n\
+        \    System.Version patch. Variant detection is unavailable; proceed at\n\
+        \    your own risk (PO-style unsafe unload may apply).\n")
+    else Printf.printf "ok: %s (round-trip %dms)\n" version rtt_ms
+  | Data.File_read content -> print_string content
+  | Data.File_written { path; bytes } -> Printf.printf "ok wrote %s (%d bytes)\n" path bytes
+  | Data.File_edited { path } -> Printf.printf "ok edited %s\n" path
+  | Data.File_deleted { path } -> Printf.printf "ok deleted %s\n" path
+  | Data.Files_listed listing | Data.Modules_listed listing -> print_string listing
+  | Data.Compiled { output; failed } ->
+    print_log output;
+    if failed then Error.fail Error.Compile_failed
+  | Data.Module_loaded name -> Printf.printf "ok loaded %s\n" name
+  | Data.Module_unloaded { name; log } ->
     Printf.printf "ok unloaded %s\n" name;
     (match String.trim log with
      | "" -> ()
      | trimmed ->
        List.iter (Printf.printf "  %s\n") (String.split_on_char '\n' trimmed))
-  | Call { cmd; args } ->
-    let r = Tools.run_command send ~cmd ~args in
-    print_log r.log;
-    Tools.call_outcome r
+  | Data.Called { log; failure } ->
+    print_log log;
+    Option.iter Error.fail failure
 ;;
+
+(* --- wiring --- *)
 
 let run cfg =
   let timeout = Float.max cfg.timeout 0.001 in
-  (* Retry only the lossy real-serial path. The FIFO/emulator transport is lossless
-     and back-pressured, so a timeout there is a genuine hang — pass it straight
-     through rather than waiting out N more timeouts. *)
-  let transport, retries =
+  let device =
     match cfg.serial with
     | None -> Error.fail Error.No_serial
     | Some (Device path) ->
-      ( Transport.open_path
-          path
-          ~timeout
-          ~baud:cfg.baud
-          ~char_delay:(float_of_int cfg.char_delay_us /. 1_000_000.0)
-      , cfg.retries )
+      Device.open_device
+        path
+        ~timeout
+        ~baud:cfg.baud
+        ~char_delay:(float_of_int cfg.char_delay_us /. 1_000_000.0)
+        ~retries:cfg.retries
     | Some (Fifos { fifo_in; fifo_out }) ->
-      Transport.open_fifos ~in_path:fifo_in ~out_path:fifo_out ~timeout, 0
+      Device.open_fifos ~in_path:fifo_in ~out_path:fifo_out ~timeout
   in
-  dispatch (Retry.wrap ~retries (Transport.send transport)) cfg.command
+  let request =
+    match cfg.command with
+    | Data.Write { path; content = _ } ->
+      (* stdin is read at the process edge, once the device is open. Host I/O
+         failures become Error.Io at the raise site, so Error.exit_code stays the
+         sole owner of the exit-code partition. *)
+      let content =
+        try In_channel.input_all In_channel.stdin with
+        | Sys_error m -> Error.fail (Error.Io m)
+      in
+      Data.Write { path; content }
+    | request -> request
+  in
+  render (Tools.execute (Io.send device) request)
 ;;

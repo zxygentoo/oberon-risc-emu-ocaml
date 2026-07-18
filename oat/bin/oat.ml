@@ -2,10 +2,10 @@
     Project Oberon or Extended Oberon system, over an emulator FIFO pair or a real
     serial device. See [oat/skill/] for the agent-side rules.
 
-    This file is only the process contract (as [main.rs] is in the Rust oat): parse
-    the CLI, run, and map failures to the documented exit codes — 0 success, 1
-    tool-level, 2 transport/protocol/argument — under the "oat: error: " prefix.
-    Everything else lives in {!Oat.Cli}. *)
+    This file is only the process contract: parse the CLI, run, and map failures
+    to the documented exit codes — 0 success, 1 tool-level, 2
+    transport/protocol/argument — under the "oat: error: " prefix. Everything
+    else lives in {!Oat.Cli}. *)
 
 let fail_with code msg =
   Printf.eprintf "oat: error: %s\n" msg;

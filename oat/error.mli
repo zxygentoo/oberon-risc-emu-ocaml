@@ -1,5 +1,4 @@
-(** oat's error vocabulary, message rendering, and exit-code mapping (port of oat's
-    [error.rs]).
+(** oat's error vocabulary, message rendering, and exit-code mapping.
 
     Each case carries enough context for a useful one-line message with a hint where
     appropriate; {!message} renders that body and the binary adds the "oat: error: "
