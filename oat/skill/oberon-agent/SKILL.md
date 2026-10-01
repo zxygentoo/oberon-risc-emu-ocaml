@@ -296,6 +296,12 @@ END M.
   variants accept Oberon-07. EO additionally supports type-bound procedures and
   FINAL blocks — use them on EO only.
 
+- **Names.** A file name must be a letter followed by letters, digits and dots, at
+  most 31 bytes (`a_b.txt` and `dir/x.txt` are not valid), and no file name or
+  `Mod.Proc` command may exceed 63 bytes. Break either rule and the device does not
+  answer at all — a `write` to an invalid name, or any command with an over-long
+  one, ends in "no response": that is this limitation, not a dead link.
+
 - **Compile/load cycle.** `compile` produces a `.rsc`; `load` brings it into memory.
   To put new code into effect: `compile` (use `-s` when the exported interface
   changed), then `load`. To replace a *running* module, `unload` first then `load`
