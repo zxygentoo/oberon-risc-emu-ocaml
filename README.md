@@ -23,7 +23,8 @@ This reads `oberon-risc-emu.opam` (generated from `dune-project`) and pulls in
 `tsdl` — which binds SDL2 — plus `imagelib`, which encodes screenshots as PNG,
 `crunch`, which embeds the host tools' toolchain assets at build time, and
 `qcheck-core`, which drives the property tests. The C compiler (already needed
-by `tsdl`) also builds the vendored C reference for the `@cosim` tests.
+by `tsdl`) also builds `oat`'s serial-line stub and the vendored C reference
+for the `@cosim` tests.
 
 ## Build & run
 
@@ -129,6 +130,21 @@ the same loop runs without a window; re-run deterministically with
 battery of the full oat surface against a booted image (see
 [`test/README.md`](test/README.md)).
 
+On real hardware, point `--serial` at the board's UART instead:
+
+```sh
+oat --serial /dev/ttyUSB1 check      # ok: Project Oberon 2013 (round-trip 30ms)
+```
+
+`oat` sets the line itself — raw 8N1 at `--baud` (default 115200), through its
+own small C stub rather than OCaml's `Unix.tcsetattr`, whose baud table can go
+stale across a glibc upgrade — and reads the settings back before sending
+anything, so a line that did not take them fails at open instead of as a
+timeout. If the board does not answer, `check` gives up within seconds and the
+error names the port, the line settings the host verified, and what is left to
+check on the device side; the skill file has the
+[debugging table](oat/skill/oberon-agent/SKILL.md).
+
 ## Verifying correctness
 
 ```sh
@@ -166,8 +182,9 @@ reached via `#include`) — the strongest oracle for a bit-exact port. Three lay
 the FP routines on 400,000 random inputs; 200,000 single random instructions over
 random state; and 5,000 bursts of 64 instructions compared after every step.
 Together they cover the whole decode/ALU/flag/branch space, including paths the
-boot never reaches. They need a C toolchain, so they are gated behind the `cosim`
-alias and kept out of `dune test` (see [`test/README.md`](test/README.md)).
+boot never reaches. They build the vendored C emulator, so they are gated behind
+the `cosim` alias and kept out of `dune test` (see
+[`test/README.md`](test/README.md)).
 
 The boot is deterministic, so you can also reproduce the golden hashes by hand —
 matching the Rust reference's `--headless --frames` output exactly:

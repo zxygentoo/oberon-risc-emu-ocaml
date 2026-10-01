@@ -1,6 +1,6 @@
 ---
 name: oberon-agent
-description: Drive a live Project Oberon 2013 or Extended Oberon system via the `oat` CLI — read/write/edit files, compile, load/unload modules, run commands. Use when the user asks you to act as the Oberon agent, write or modify Oberon code in a live Oberon system, or work on Oberon-side code that's running in an emulator. Needs the `oat` binary and a known serial line (PTY or FIFO pair) to a booted emulator with `AgentTool.Mod` installed.
+description: Drive a live Project Oberon 2013 or Extended Oberon system via the `oat` CLI — read/write/edit files, compile, load/unload modules, run commands. Use when the user asks you to act as the Oberon agent, write or modify Oberon code in a live Oberon system, or work on Oberon-side code that's running in an emulator or on a real board. Needs the `oat` binary and a known serial line (a serial device / PTY, or a FIFO pair) to a booted emulator or board with `AgentTool.Mod` installed.
 ---
 
 # oberon-agent
@@ -80,7 +80,7 @@ don't try to repair the link.
 | `cannot open serial device` | wrong path, no permission, or not a serial device | `ls -l <PATH>`; the errno text in the message |
 | `serial device … did not take the requested line settings` | the driver refused the rate or mode; the message shows asked vs got | report both lines verbatim |
 | `no response on …` | the host line is set and verified (the `line:` row says so) — the device said nothing | device side: board powered and configured, Oberon booted, AgentTool running, the board's baud rate, the right port (`ls /dev/ttyUSB*`) |
-| `bad response sync byte …` | bytes arrived but not a response frame | a baud mismatch, or a device busy enough to garble the frame (see "Emulator vs real hardware"); wait a few seconds and run `check` once more |
+| `bad response sync byte …` | bytes arrived but not a response frame | a baud mismatch, another program using the same port, or a device busy enough to garble the frame (see "Emulator vs real hardware"); wait a few seconds and run `check` once more |
 
 Two read-only probes help the user:
 
