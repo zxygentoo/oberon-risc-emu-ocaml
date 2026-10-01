@@ -44,9 +44,13 @@ OAT="$OAT_BIN --serial-in /tmp/p.in --serial-out /tmp/p.out"
 (Use whatever paths the user gave you — `/tmp/p.in` / `/tmp/p.out` is a common
 convention but don't assume it.)
 
-On real RS232 hardware, transfers are slow — a 50 KB `read` takes ~26 s at
-19200 baud. Add `--timeout <secs>` to every call accordingly; the 15 s default
-assumes the emulator.
+On real hardware (`--serial`), `oat` sets the line itself — raw 8N1 at `--baud`,
+default 115200, which is what the Nexys 4 build runs — and reads the settings back
+before it sends anything. Add `--baud <rate>` only if the user tells you the board
+runs another rate. Transfers are slow there, about 10 bits per byte: a 50 KB `read`
+takes ~4.3 s at 115200. `--timeout` bounds *silence* (no byte arriving), not the
+whole transfer, so raise it only for commands the device is slow to answer (a big
+compile); the default is 15 s, and 2 s for `check` on `--serial`.
 
 ### 3. Run `oat check` and read the result
 
@@ -62,7 +66,29 @@ ok: Extended Oberon System  AP 1.1.26 (round-trip 8ms)
 | `ok: Extended Oberon …` | EO image with the System.Version patch | safe path: EO has safe-unload (see "Unload") |
 | `ok: Project Oberon 2013…` | PO image with the System.Version patch | **unload is unsafe on PO** — see "Unload on PO" |
 | `ok: connected (… no version string …)` | wire is up but the image lacks the patch | unknown variant. Tell the user, assume PO-style risks, ask before any `unload` |
-| any error | wire is broken or emulator isn't running | stop and report; don't try to recover yourself |
+| any error | wire is broken or emulator isn't running | stop and report; don't try to recover yourself. On `--serial`, see "If `check` fails on a real serial line" first |
+
+#### If `check` fails on a real serial line (`--serial`)
+
+It fails within seconds (2 s per attempt, 4 attempts), and the error says which side
+to look at. Read it, run only the read-only checks below, and report what you found —
+don't try to repair the link.
+
+| error starts with | meaning | what to check and report |
+|---|---|---|
+| `unsupported baud rate` | the host has no such standard rate | the message lists the supported ones — pick from it |
+| `cannot open serial device` | wrong path, no permission, or not a serial device | `ls -l <PATH>`; the errno text in the message |
+| `serial device … did not take the requested line settings` | the driver refused the rate or mode; the message shows asked vs got | report both lines verbatim |
+| `no response on …` | the host line is set and verified (the `line:` row says so) — the device said nothing | device side: board powered and configured, Oberon booted, AgentTool running, the board's baud rate, the right port (`ls /dev/ttyUSB*`) |
+| `bad response sync byte …` | bytes arrived but not a response frame | a baud mismatch, or a device busy enough to garble the frame (see "Emulator vs real hardware"); wait a few seconds and run `check` once more |
+
+Two read-only probes help the user:
+
+- **Is the host really at that speed?** `stty -F <PATH> speed` (macOS: `stty -f`) right
+  after an `oat` run prints the rate the kernel holds. It must equal `--baud`; `oat`
+  already checked this itself, so a difference here is an `oat` bug worth reporting.
+- **Is the board at another rate?** `$OAT_BIN --serial <PATH> --baud 19200 check`
+  tries one. Each wrong guess costs about 8 s.
 
 ## Tools
 
@@ -213,7 +239,7 @@ fatal.
     leak.
 
 This is the OS design, not something `oat` can fix from the host — keep durable demos
-slow-ticking and tunable in place. (See also the slow-transfer/`--timeout` note in
+slow-ticking and tunable in place. (See also the transfer-speed/`--timeout` note in
 Startup and the FINAL / `Close*` rules below.)
 
 ## Working rules

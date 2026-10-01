@@ -1,5 +1,10 @@
 (** The serial byte channel over a PTY (raw mode) or a FIFO pair. *)
 
+type line =
+  { path : string
+  ; baud : int
+  }
+
 type t =
   { reader : Unix.file_descr
   ; writer : Unix.file_descr option
@@ -12,7 +17,12 @@ type t =
        at a time, so the real UART peer — a single-byte register with no flow control
        (the OberonStation RS232R), read by a cooperative poll — can grab each byte
        before the next overruns it. See the oat CLI's [--char-delay-us]. *)
+  ; line : line option
+    (* [Some] for a real serial line [open_device] set up and read back; [None]
+       for FIFOs. *)
   }
+
+let line t = t.line
 
 let rec poll_readable fd timeout =
   match Unix.select [ fd ] [] [] timeout with
@@ -90,52 +100,60 @@ let open_fifo path =
 let open_fifos ~in_path ~out_path ~timeout =
   let writer = open_fifo in_path in
   let reader = open_fifo out_path in
-  { reader; writer = Some writer; timeout; char_delay = 0.0 }
+  { reader; writer = Some writer; timeout; char_delay = 0.0; line = None }
 ;;
 
-(* Raw 8N1 at [baud] — cfmakeraw restated on [Unix.terminal_io] (IEXTEN is not
-   exposed there; inert for this byte protocol), plus the line speed. cfmakeraw
-   leaves the speed untouched — on a real UART that means whatever the port last had
-   (often not ours), so pin it. FIFO channels skip this path entirely. *)
-let set_raw_mode fd baud =
-  let tio = Unix.tcgetattr fd in
-  Unix.tcsetattr
-    fd
-    Unix.TCSANOW
-    { tio with
-      c_ignbrk = false
-    ; c_brkint = false
-    ; c_parmrk = false
-    ; c_istrip = false
-    ; c_inlcr = false
-    ; c_igncr = false
-    ; c_icrnl = false
-    ; c_ixon = false
-    ; c_opost = false
-    ; c_echo = false
-    ; c_echonl = false
-    ; c_icanon = false
-    ; c_isig = false
-    ; c_csize = 8
-    ; c_parenb = false
-    ; c_vmin = 1
-    ; c_vtime = 0
-    ; c_ibaud = baud
-    ; c_obaud = baud
-    }
+(* The line setup lives in serial_stubs.c, not Unix.tcsetattr: the Unix stubs'
+   baud table is frozen into the switch's static archive and goes stale across a
+   glibc upgrade (115200 silently becomes 4098 baud). FIFO channels skip all of
+   this. *)
+external stub_bauds : unit -> int array = "oat_serial_bauds"
+external stub_configure : Unix.file_descr -> int -> unit = "oat_serial_configure"
+external stub_read_back : Unix.file_descr -> int * int * bool = "oat_serial_read_back"
+
+let supported_bauds = Array.to_list (stub_bauds ())
+
+(* The driver may accept the settings and still not apply them all, so compare
+   what the line now holds against what was asked. An input speed of 0 is
+   termios for "same as the output speed". *)
+let verify fd { path; baud } =
+  let in_baud, out_baud, raw = stub_read_back fd in
+  let in_baud = if in_baud = 0 then out_baud else in_baud in
+  if not (in_baud = baud && out_baud = baud && raw)
+  then Error.fail (Error.Line_mismatch { path; baud; in_baud; out_baud; raw })
 ;;
 
 let open_device path ~timeout ~baud ~char_delay =
+  if not (List.mem baud supported_bauds)
+  then Error.fail (Error.Unsupported_baud { baud; supported = supported_bauds });
   let open_err err = Error.fail (Error.Open_serial { path; err }) in
+  (* O_NONBLOCK only for the open itself: a port whose CLOCAL is off would
+     otherwise block here waiting for a carrier, before we get to set CLOCAL. *)
   let fd =
-    try Unix.openfile path [ Unix.O_RDWR; Unix.O_NOCTTY ] 0 with
+    try Unix.openfile path [ Unix.O_RDWR; Unix.O_NOCTTY; Unix.O_NONBLOCK ] 0 with
     | Unix.Unix_error (err, _, _) -> open_err err
   in
-  (try set_raw_mode fd baud with
-   | Unix.Unix_error (err, _, _) -> open_err err);
-  { reader = fd; writer = None; timeout; char_delay }
+  let line = { path; baud } in
+  (try
+     Unix.clear_nonblock fd;
+     stub_configure fd baud;
+     verify fd line
+   with
+   | e ->
+     Unix.close fd;
+     (match e with
+      | Unix.Unix_error (err, _, _) -> open_err err
+      | e -> raise e));
+  { reader = fd; writer = None; timeout; char_delay; line = Some line }
 ;;
 
 module For_tests = struct
-  let make ~reader ~writer ~timeout ~char_delay = { reader; writer; timeout; char_delay }
+  let make ~reader ~writer ~timeout ~char_delay =
+    { reader; writer; timeout; char_delay; line = None }
+  ;;
+
+  let as_serial t line = { t with line = Some line }
+  let configure = stub_configure
+  let read_back = stub_read_back
+  let verify = verify
 end

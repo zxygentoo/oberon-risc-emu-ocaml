@@ -82,10 +82,20 @@ let with_retries ~retries f =
 
 let send device ~retries request =
   let frame = encode_request request in
-  with_retries ~retries (fun () ->
-    Device.drain device;
-    Device.send device frame;
-    read_response (Device.recv device))
+  let exchange () =
+    with_retries ~retries (fun () ->
+      Device.drain device;
+      Device.send device frame;
+      read_response (Device.recv device))
+  in
+  match Device.line device with
+  | None -> exchange ()
+  | Some { Device.path; baud } ->
+    (* A desync that outlived the retry budget on a real serial line: report it
+       as a link failure, with the line settings the host is known to hold. *)
+    (try exchange () with
+     | Error.Error cause when retriable cause ->
+       Error.fail (Error.Serial_link { path; baud; attempts = retries + 1; cause }))
 ;;
 
 module For_tests = struct

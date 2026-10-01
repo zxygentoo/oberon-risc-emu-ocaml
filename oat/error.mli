@@ -18,8 +18,29 @@ type t =
       }
   | Open_serial of
       { path : string
-      ; err : Unix.error
+      ; err : Unix.error (** From opening the device or from setting up its line. *)
       }
+  | Unsupported_baud of
+      { baud : int
+      ; supported : int list (** {!Device.supported_bauds}, ascending. *)
+      }
+  | Line_mismatch of
+      { path : string
+      ; baud : int (** The rate asked for. *)
+      ; in_baud : int
+      ; out_baud : int
+        (** What the line holds after setup; negative when the platform cannot
+            name the speed. *)
+      ; raw : bool (** Whether the raw 8N1 mode took. *)
+      } (** The driver accepted the line settings but the read-back differs. *)
+  | Serial_link of
+      { path : string
+      ; baud : int (** Set and read back on [path] before the exchange. *)
+      ; attempts : int
+      ; cause : t (** The last attempt's [Timeout] or [Bad_sync]. *)
+      }
+  (** A real serial line that is set up correctly on the host and still got no
+      usable response — what a device-side mismatch looks like from here. *)
   | Io of string
   | Timeout of
       { secs : float

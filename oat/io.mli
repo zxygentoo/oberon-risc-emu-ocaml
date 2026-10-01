@@ -26,6 +26,11 @@
     tool-level statuses never raise here, and genuine line failures ([Eof],
     [Io], open errors) are not transient, so they fail fast.
 
+    On a real serial line ({!Device.line}), a desync that outlives the budget is
+    raised as [Serial_link] — the last [Timeout] / [Bad_sync] plus the line the
+    host holds and the attempts made — since there it is a link to debug, not an
+    emulator to restart.
+
     @raise Error.Error on timeout, EOF, a bad sync byte, an I/O error, or (at
     encode time) a name outside 1..255 bytes. *)
 val send : Device.t -> retries:int -> Data.Wire.t

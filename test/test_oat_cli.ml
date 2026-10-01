@@ -65,13 +65,25 @@ let () =
   invalid "serial_out_requires_in" [ "--serial-out"; "b"; "check" ];
   (* Defaults match the Rust CLI. *)
   config "defaults" [ "check" ] (fun c ->
-    c.Cli.timeout = 15.0
+    c.Cli.timeout = None
     && c.Cli.baud = 115200
     && c.Cli.char_delay_us = 600
     && c.Cli.retries = 3);
   config "option_values" [ "--timeout"; "2.5"; "--baud"; "19200"; "check" ] (fun c ->
-    c.Cli.timeout = 2.5 && c.Cli.baud = 19200);
-  config "equals_form" [ "--timeout=2.5"; "check" ] (fun c -> c.Cli.timeout = 2.5);
+    c.Cli.timeout = Some 2.5 && c.Cli.baud = 19200);
+  config "equals_form" [ "--timeout=2.5"; "check" ] (fun c -> c.Cli.timeout = Some 2.5);
+  (* The read timeout: 15 s by default, but [check] on a real serial device is
+     the liveness probe — 2 s, so a dead link fails fast. [--timeout] always wins. *)
+  let timeout_of name args want =
+    config name args (fun c -> Cli.For_tests.effective_timeout c = want)
+  in
+  timeout_of "timeout_check_serial" [ "--serial"; "p"; "check" ] 2.0;
+  timeout_of "timeout_read_serial" [ "--serial"; "p"; "read"; "F" ] 15.0;
+  timeout_of
+    "timeout_check_fifos"
+    [ "--serial-in"; "a"; "--serial-out"; "b"; "check" ]
+    15.0;
+  timeout_of "timeout_explicit_wins" [ "--serial"; "p"; "--timeout"; "30"; "check" ] 30.0;
   invalid "bad_timeout" [ "--timeout"; "abc"; "check" ];
   invalid "negative_retries" [ "--retries"; "-1"; "check" ];
   invalid "missing_value" [ "check"; "--timeout" ];
