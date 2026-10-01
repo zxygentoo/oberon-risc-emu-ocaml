@@ -80,7 +80,8 @@ builds the agent-ready disk image (see the root `Makefile`), boots it headless
 on a private FIFO pair with the display environment scrubbed, and drives the
 full `oat` surface against the running system from
 [`integration.sh`](integration.sh): write/read round-trips, every edit path
-(the wire OP_EDIT, the >1 KiB host-side fallback, and the error statuses),
+(the wire OP_EDIT, the >1 KiB host-side fallback, and the error statuses), a
+write at the 64 KiB PUT limit (commands must still answer after it),
 compile/load/call, listings, trap survival (a trapping call reports cleanly
 and the wire stays up), and deletes — plus, on Extended Oberon, a full
 edit → compile → unload → reload hot swap. Kept out of `dune test` because it

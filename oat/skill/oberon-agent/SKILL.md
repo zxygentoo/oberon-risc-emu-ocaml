@@ -242,6 +242,54 @@ This is the OS design, not something `oat` can fix from the host — keep durabl
 slow-ticking and tunable in place. (See also the transfer-speed/`--timeout` note in
 Startup and the FINAL / `Close*` rules below.)
 
+## Project Oberon 2013: keep a module's globals under 64 KiB
+
+PO's compiler generates wrong addresses, **with no compile error**, once the
+variables in a module's top-level `VAR` section add up to 64 KiB (65536 bytes) or
+more. In such a module:
+
+- **every string literal** is read from the wrong place — it comes out empty or as
+  garbage, wherever in the module it is used;
+- **any global declared past the 64 KiB mark** is wrong when passed as a parameter
+  (`Texts.WriteString(W, s)`, a `VAR` argument, an array or record argument);
+- plain reads and writes of scalars and array elements still work, which makes the
+  module look fine until it isn't.
+
+Typical symptoms: empty or garbage text, a `TRAP 1` inside `Files` or `Texts` when a
+literal is passed as a name, or code that works until some large buffer gets filled
+(the wrong address often lands inside the module's own big array). EO's compiler does
+not have this bug, but write modules that are safe on both.
+
+**Check it.** The compile success line is `compiling M <code> <data> <key>`; the
+second number is the size of the module's globals in bytes:
+
+```
+$ $OAT compile Big.Mod
+  compiling Big new symbol file    85 65596 C6D4F1B7     # 65596 >= 65536: broken on PO
+```
+
+On PO keep that number **under 60000** — string literals are stored right after the
+globals and must stay below the 64 KiB mark too.
+
+**Avoid it.** Put any large buffer on the heap instead of in the `VAR` section. The
+pointer's base type must be a record on PO:
+
+```oberon
+TYPE Buf = POINTER TO BufDesc;
+  BufDesc = RECORD d: ARRAY 10000H OF BYTE END;
+VAR buf: Buf;                 (*module-level, so the GC keeps the block*)
+...
+BEGIN NEW(buf)                (*once, in the module body; then use buf.d[i]*)
+END M.
+```
+
+- `NEW` returns `NIL` when the heap has no room — test `buf # NIL` before use.
+- Allocate once and keep the pointer in a module-level variable; don't allocate per
+  call.
+- The heap is about 425 KB on a 1 MB machine and the compiler needs ~100 KB of it
+  for a large module, so one 64 KiB block is fine; several hundred KB is not.
+- Don't move the array into a procedure instead: the stack is only 32 KB on PO.
+
 ## Working rules
 
 - **Source format.** Plain-ASCII Oberon source. Module `M` lives in `M.Mod`. Both

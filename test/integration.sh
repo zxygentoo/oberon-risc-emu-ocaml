@@ -2,8 +2,8 @@
 # Live integration test: boot IMAGE in the emulator (headless, no display
 # needed) on a private FIFO pair and drive the full oat surface against the
 # running system — write/read/edit (wire path, fallback path, error statuses),
-# compile, call, list, delete, and on Extended Oberon a full edit -> compile
-# -> unload -> reload hot swap.
+# a write at the 64 KiB PUT limit, compile, call, list, delete, and on Extended
+# Oberon a full edit -> compile -> unload -> reload hot swap.
 #
 # Usage: test/integration.sh IMAGE [RISC [OAT]]
 
@@ -157,6 +157,21 @@ z
 tail
 EOF
 
+# --- write at the PUT limit -----------------------------------------------------
+# 64 KiB of letters fills the device's whole receive buffer. A CALL right after
+# must still answer: with a static buffer, PO's compiler put AgentProtocol's ""
+# literal at a miscomputed address inside it, and a letter there made every
+# later CALL trap before it could reply.
+
+head -c 65536 /dev/zero | tr '\0' 'A' >"$T/full"
+expect_ok "write: 64 KiB of letters (the PUT limit)" oat write Full.Txt <"$T/full"
+expect_ok "CALL answers after a full-buffer write" oat check
+if oat read Full.Txt 2>"$T/err" | cmp -s - "$T/full"; then
+    ok "64 KiB round-trips byte-identical"
+else
+    bad "64 KiB round-trips byte-identical" "$(cat "$T/err")"
+fi
+
 # --- compile / call / list ------------------------------------------------------
 
 expect_ok "compile Itest.Mod" oat compile Itest.Mod
@@ -236,6 +251,7 @@ fi
 expect_ok "delete Itest.Mod" oat delete Itest.Mod
 expect_ok "delete Dup.Txt" oat delete Dup.Txt
 expect_ok "delete Big.Txt" oat delete Big.Txt
+expect_ok "delete Full.Txt" oat delete Full.Txt
 expect_ok "delete Crash.Mod" oat delete Crash.Mod
 expect_err "read deleted file -> exit 1" "file not found" oat read Itest.Mod
 

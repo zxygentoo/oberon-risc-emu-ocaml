@@ -17,6 +17,11 @@ MODULE AgentProtocol;  (*the oat wire protocol, shared verbatim by both variants
 
   TYPE
     Executor* = PROCEDURE (cmd: ARRAY OF CHAR; par: Texts.Text): INTEGER;
+    PutBuf = POINTER TO PutBufDesc;    (*the PUT buffer lives on the heap, not in the module's data: PO's compiler
+      (ORG.Put1a) miscomputes the address of anything at a data offset >= 64 KiB, so a static 64 KiB array put this
+      module's string constants out of reach -- "" resolved to a byte inside the buffer, and a PUT that left a letter
+      there made every later CALL trap in Files.Check before it could reply. Keep the module's globals small.*)
+    PutBufDesc = RECORD d: ARRAY maxPut OF BYTE END;
 
   VAR
     T: Oberon.Task;
@@ -32,7 +37,7 @@ MODULE AgentProtocol;  (*the oat wire protocol, shared verbatim by both variants
     M, org: INTEGER;                   (*DoEdit pattern length + ring start; global because Forward can't see DoEdit's locals*)
     pat, win: ARRAY editLim OF CHAR;   (*DoEdit pattern + ring-buffer match window; win[org] is the window's first char*)
     dis: ARRAY 256 OF INTEGER;         (*Boyer-Moore displacement table*)
-    pbuf: ARRAY maxPut OF BYTE;        (*DoPut payload buffer: receive the whole frame, then write*)
+    pbuf: PutBuf;                      (*DoPut payload buffer: receive the whole frame, then write. Allocated once at load; a GC root*)
 
   (* --- serial byte layer (PCLink1's Rec/Send, status-gated) --- *)
 
@@ -91,16 +96,21 @@ MODULE AgentProtocol;  (*the oat wire protocol, shared verbatim by both variants
     -- the first at byte SectorSize-HeaderSize = 1024-352 = 672 -- and doing that inside the
     receive loop stalls long enough to overrun the one-byte RS232 register and drop the next
     byte. So receive first (no disk I/O between bytes), write after the wire is drained.*)
-    VAR F: Files.File; R: Files.Rider; len, i: INTEGER;
+    VAR F: Files.File; R: Files.Rider; len, i: INTEGER; x: BYTE;
   BEGIN RecName(name); RecInt(len);
-    IF rxOk & (len >= 0) & (len <= maxPut) THEN
+    IF rxOk & (len >= 0) & (len <= maxPut) & (pbuf # NIL) THEN
       i := 0;
-      WHILE i < len DO Rec(pbuf[i]); INC(i) END ;        (*receive: RAM only, never overruns*)
+      WHILE i < len DO Rec(pbuf.d[i]); INC(i) END ;      (*receive: RAM only, never overruns*)
       IF rxOk THEN                                       (*whole frame arrived -> commit*)
         F := Files.New(name); Files.Set(R, F, 0); i := 0;
-        WHILE i < len DO Files.WriteByte(R, pbuf[i]); INC(i) END ;
+        WHILE i < len DO Files.WriteByte(R, pbuf.d[i]); INC(i) END ;
         Files.Register(F); Reply(stOk)
       END                                                (*else: lost byte -> abort, no reply*)
+    ELSIF rxOk & (len >= 0) & (len <= maxPut) THEN       (*no buffer (NEW failed at load): consume the payload so it
+      is not parsed as frames, then refuse*)
+      i := 0;
+      WHILE i < len DO Rec(x); INC(i) END ;
+      IF rxOk THEN Reply(stError) END
     ELSIF rxOk THEN Reply(stError)                       (*frame intact but length out of range*)
     END
   END DoPut;
@@ -264,5 +274,5 @@ MODULE AgentProtocol;  (*the oat wire protocol, shared verbatim by both variants
     END
   END Start;
 
-BEGIN rxOk := TRUE; Texts.OpenWriter(EW); Texts.OpenWriter(PW)
+BEGIN rxOk := TRUE; Texts.OpenWriter(EW); Texts.OpenWriter(PW); NEW(pbuf)
 END AgentProtocol.
