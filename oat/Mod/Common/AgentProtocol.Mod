@@ -133,14 +133,15 @@ MODULE AgentProtocol;  (*the oat wire protocol, shared verbatim by both variants
   PROCEDURE DoCall;   (*parse the frame, run the variant's executor, frame the
     Log delta written while it ran as the response. The in-flight window marks
     the stretch where a trap unwinds us before any response byte went out --
-    Recover (next task tick) can then still complete the exchange.*)
+    Recover (next task tick) can then still complete the exchange. It opens as
+    soon as the frame is consumed, before the par text is built, so a trap in
+    that setup (NEW, Texts.Open) answers stTrapped too instead of nothing.*)
     VAR len, i, status: INTEGER; x: BYTE;
-  BEGIN RecName(cmd); RecInt(len);
-    NEW(par); Texts.Open(par, ""); i := 0;
+  BEGIN RecName(cmd); RecInt(len); i := 0;
     WHILE i < len DO Rec(x); Texts.Write(PW, CHR(x)); INC(i) END;
     IF rxOk THEN                        (*whole frame arrived -> run the command*)
-      Texts.Append(par, PW.buf);
       flightBeg := Oberon.Log.len; inFlight := TRUE;
+      NEW(par); Texts.Open(par, ""); Texts.Append(par, PW.buf);
       IF exec # NIL THEN status := exec(cmd, par) ELSE status := stError END;
       ReplyLog(status, flightBeg)
     ELSE Texts.OpenWriter(PW)           (*lost byte -> drop the partial par, abort, no reply*)
