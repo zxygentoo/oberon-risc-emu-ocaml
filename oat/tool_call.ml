@@ -7,7 +7,6 @@ module Wire = Data.Wire
    the device: the Latin-1 fold makes non-ASCII writes round-trip on read. *)
 let to_oberon = Oberon_tools.Convert.to_oberon
 let from_oberon = Oberon_tools.Convert.from_oberon
-
 let bad_status s = Error.fail (Error.Bad_status (Wire.status_byte s))
 let check_ok (r : Wire.response) = if r.status <> Wire.Ok then bad_status r.status
 
@@ -131,8 +130,7 @@ let delete_file wire path =
   (* System.Mod writes "<name> deleting" on success, "<name> deleting failed" on
      res # 0. Match the full phrase so a filename containing "failed" doesn't trip
      the check. *)
-  if contains ~sub:"deleting failed" log
-  then Error.fail (Error.File_not_found path)
+  if contains ~sub:"deleting failed" log then Error.fail (Error.File_not_found path)
 ;;
 
 let list_files wire ~prefix = call_log wire ~cmd:"AgentTool.ListFiles" ~args:prefix
@@ -157,8 +155,7 @@ let unload_module wire name =
      viewer references dangling, which is why the skill insists on operator
      permission before any unload on PO. *)
   let log = call_log wire ~cmd:"System.Free" ~args:(name ^ " /f") in
-  if contains ~sub:"unloading failed" log
-  then Error.fail (Error.Unload_in_use log);
+  if contains ~sub:"unloading failed" log then Error.fail (Error.Unload_in_use log);
   log
 ;;
 

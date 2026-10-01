@@ -112,10 +112,7 @@ let () =
         | Error.Open_fifo { err = Unix.ENOENT; _ } -> true
         | _ -> false)
       (fun () ->
-         Device.open_fifos
-           ~in_path:(Filename.concat dir "nope.in")
-           ~out_path
-           ~timeout:0.1));
+         Device.open_fifos ~in_path:(Filename.concat dir "nope.in") ~out_path ~timeout:0.1));
   (* The baud table: the standard rates are there; 0 (hang up) and a non-standard
      rate are not, and asking for one fails before anything is opened. *)
   List.iter

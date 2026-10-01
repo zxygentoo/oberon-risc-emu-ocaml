@@ -147,7 +147,12 @@ let parse_argv raw_args =
       headless := true;
       loop rest
     | ("--help" | "-h") :: _ -> help := true
-    | (( "--zoom" | "--mem" | "--size" | "--serial-in" | "--serial-out" | "--frames"
+    | (( "--zoom"
+       | "--mem"
+       | "--size"
+       | "--serial-in"
+       | "--serial-out"
+       | "--frames"
        | "--shot-frames" ) as o)
       :: [] -> fail (Printf.sprintf "option %s requires a value" o)
     | opt :: _ when String.starts_with ~prefix:"-" opt ->

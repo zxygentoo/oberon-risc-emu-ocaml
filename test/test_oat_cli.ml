@@ -7,7 +7,14 @@ open Oat
 open Test_harness
 
 let parse = Cli.parse_argv
-let invalid name args = check name (match parse args with Cli.Invalid _ -> true | _ -> false)
+
+let invalid name args =
+  check
+    name
+    (match parse args with
+     | Cli.Invalid _ -> true
+     | _ -> false)
+;;
 
 let config name args pred =
   match parse args with
@@ -96,12 +103,10 @@ let () =
     c.Cli.command = Data.Edit { path = "F"; old = "old"; new_ = "new" });
   invalid "edit_arity" [ "edit"; "F"; "old" ];
   config "delete" [ "delete"; "F" ] (fun c -> c.Cli.command = Data.Delete "F");
-  config "list_files_bare" [ "list-files" ] (fun c ->
-    c.Cli.command = Data.List_files "");
+  config "list_files_bare" [ "list-files" ] (fun c -> c.Cli.command = Data.List_files "");
   config "list_files_prefix" [ "list-files"; "Sys" ] (fun c ->
     c.Cli.command = Data.List_files "Sys");
-  config "list_modules" [ "list-modules" ] (fun c ->
-    c.Cli.command = Data.List_modules);
+  config "list_modules" [ "list-modules" ] (fun c -> c.Cli.command = Data.List_modules);
   config "compile" [ "compile"; "M.Mod" ] (fun c ->
     c.Cli.command = Data.Compile { name = "M.Mod"; new_symbol = false });
   config "compile_s" [ "compile"; "M.Mod"; "-s" ] (fun c ->
@@ -145,14 +150,8 @@ let () =
     "render_written"
     (Data.Written { path = "F.Mod"; bytes = 2 })
     ~want:"ok wrote F.Mod (2 bytes)\n";
-  render
-    "render_edited"
-    (Data.Edited { path = "F.Mod" })
-    ~want:"ok edited F.Mod\n";
-  render
-    "render_deleted"
-    (Data.Deleted { path = "F.Mod" })
-    ~want:"ok deleted F.Mod\n";
+  render "render_edited" (Data.Edited { path = "F.Mod" }) ~want:"ok edited F.Mod\n";
+  render "render_deleted" (Data.Deleted { path = "F.Mod" }) ~want:"ok deleted F.Mod\n";
   render "render_listed_files" (Data.Listed_files "A\t1\nB\t2\n") ~want:"A\t1\nB\t2\n";
   render "render_loaded" (Data.Loaded "M") ~want:"ok loaded M\n";
   (* The unload log is indented under the ok line. *)

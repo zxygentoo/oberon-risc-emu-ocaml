@@ -74,8 +74,7 @@ let with_retries ~retries f =
   let rec go attempt =
     match f () with
     | v -> v
-    | exception Error.Error e when retriable e && attempt < retries ->
-      go (attempt + 1)
+    | exception Error.Error e when retriable e && attempt < retries -> go (attempt + 1)
   in
   go 0
 ;;

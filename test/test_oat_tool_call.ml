@@ -18,10 +18,7 @@ type fake =
   }
 
 let new_fake () =
-  { files = Hashtbl.create 8
-  ; modules = [ "System"; "Oberon"; "AgentTool" ]
-  ; call = None
-  }
+  { files = Hashtbl.create 8; modules = [ "System"; "Oberon"; "AgentTool" ]; call = None }
 ;;
 
 let with_file fake name body =
@@ -37,9 +34,7 @@ let le32 n =
 
 let contains ~sub s =
   let n = String.length sub in
-  let rec go i =
-    i + n <= String.length s && (String.sub s i n = sub || go (i + 1))
-  in
+  let rec go i = i + n <= String.length s && (String.sub s i n = sub || go (i + 1)) in
   n = 0 || go 0
 ;;
 
@@ -242,7 +237,9 @@ let () =
       | _ -> false)
     (fun () ->
        let always_trapped _ = { Wire.status = Wire.Trapped; payload = "" } in
-       Tool_call.execute always_trapped (Data.Edit { path = "M.Mod"; old = "a"; new_ = "b" }));
+       Tool_call.execute
+         always_trapped
+         (Data.Edit { path = "M.Mod"; old = "a"; new_ = "b" }));
   (* delete. *)
   let w = with_file (new_fake ()) "M.Mod" "x\r" in
   (match exec w (Data.Delete "M.Mod") with
@@ -279,8 +276,7 @@ let () =
    | _ -> check "check_version_trimmed" false);
   let w = new_fake () in
   w.call
-  <- Some
-       (fun cmd _ -> if cmd = "AgentTool.Version" then Some (Wire.Ok, "") else None);
+  <- Some (fun cmd _ -> if cmd = "AgentTool.Version" then Some (Wire.Ok, "") else None);
   (match exec w Data.Check with
    | Data.Checked { version = ""; _ } -> check "check_version_empty" true
    | _ -> check "check_version_empty" false);
@@ -292,9 +288,9 @@ let () =
   w.call
   <- Some
        (fun cmd _ ->
-          if cmd = "AgentTool.Load"
-          then Some (Wire.Ok, "AgentTool.Load\n  res=2\n")
-          else None);
+         if cmd = "AgentTool.Load"
+         then Some (Wire.Ok, "AgentTool.Load\n  res=2\n")
+         else None);
   expect_error
     "load_failure_parses_res"
     (function
@@ -310,9 +306,9 @@ let () =
   w.call
   <- Some
        (fun cmd _ ->
-          if cmd = "System.Free"
-          then Some (Wire.Ok, "System.Free\n  X unloading failed, try /f option\n")
-          else None);
+         if cmd = "System.Free"
+         then Some (Wire.Ok, "System.Free\n  X unloading failed, try /f option\n")
+         else None);
   expect_error
     "unload_in_use_detected"
     (function
@@ -324,9 +320,9 @@ let () =
   w.call
   <- Some
        (fun cmd _ ->
-          if cmd = "ORP.Compile"
-          then Some (Wire.Ok, "  compiling M\n  pos 5 undef\ncompilation FAILED\n")
-          else None);
+         if cmd = "ORP.Compile"
+         then Some (Wire.Ok, "  compiling M\n  pos 5 undef\ncompilation FAILED\n")
+         else None);
   (match exec w (Data.Compile { name = "M.Mod"; new_symbol = false }) with
    | Data.Compiled { output; failed } ->
      check "compile_failed_flag" failed;
@@ -337,11 +333,11 @@ let () =
   w.call
   <- Some
        (fun cmd par ->
-          if cmd = "ORP.Compile"
-          then (
-            saw_slash_s := contains ~sub:"M.Mod/s" par;
-            Some (Wire.Ok, "  compiling M new symbol file  10 4 ABCD\n"))
-          else None);
+         if cmd = "ORP.Compile"
+         then (
+           saw_slash_s := contains ~sub:"M.Mod/s" par;
+           Some (Wire.Ok, "  compiling M new symbol file  10 4 ABCD\n"))
+         else None);
   (match exec w (Data.Compile { name = "M.Mod"; new_symbol = true }) with
    | Data.Compiled { failed; _ } ->
      check "compile_new_symbol_ok" (not failed);
@@ -349,8 +345,7 @@ let () =
    | _ -> check "compile_new_symbol_ok" false);
   let w = new_fake () in
   w.call
-  <- Some
-       (fun cmd _ -> if cmd = "ORP.Compile" then Some (Wire.Error, "") else None);
+  <- Some (fun cmd _ -> if cmd = "ORP.Compile" then Some (Wire.Error, "") else None);
   expect_error
     "compile_non_ok_is_bad_status"
     (function

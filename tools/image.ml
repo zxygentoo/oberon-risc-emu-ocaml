@@ -38,7 +38,6 @@ type t =
 exception Bad_image of string
 
 let bad msg = raise (Bad_image msg)
-
 let rd_u32 = U32.get_le
 
 (* Same four bytes reinterpreted as a signed 32-bit value (Rust's [rd_u32 as i32]). *)

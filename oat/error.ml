@@ -217,8 +217,8 @@ let message = function
   | Eof -> "serial line closed (EOF) — the emulator dropped the connection"
   | Bad_sync { got; expected } ->
     Printf.sprintf
-      "bad response sync byte 0x%02X (expected 0x%02X) — device is out of frame; \
-       restart the emulator"
+      "bad response sync byte 0x%02X (expected 0x%02X) — device is out of frame; restart \
+       the emulator"
       got
       expected
   | Bad_status status -> Printf.sprintf "device returned status=%d" status

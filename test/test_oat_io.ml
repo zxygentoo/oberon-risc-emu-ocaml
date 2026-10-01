@@ -130,7 +130,8 @@ let () =
   (* The device-side test codec inverts the production one. *)
   check
     "parse_inverts_get"
-    (Io.For_tests.parse_request (Io.For_tests.encode_request (Wire.Get { name = "M.Mod" }))
+    (Io.For_tests.parse_request
+       (Io.For_tests.encode_request (Wire.Get { name = "M.Mod" }))
      = Wire.Get { name = "M.Mod" });
   check
     "parse_inverts_put"
@@ -167,7 +168,9 @@ let () =
   eq "first_try_one_call" !calls 1;
   (* Two timeouts then success; 2 retries (3 attempts) covers it. *)
   let f, calls = flaky 2 timeout in
-  check "recovers_within_budget" ((Io.For_tests.with_retries ~retries:2 f).status = Wire.Ok);
+  check
+    "recovers_within_budget"
+    ((Io.For_tests.with_retries ~retries:2 f).status = Wire.Ok);
   eq "recovers_three_calls" !calls 3;
   let f, calls = flaky 1 bad_sync in
   check "bad_sync_retried" ((Io.For_tests.with_retries ~retries:2 f).status = Wire.Ok);
@@ -244,7 +247,9 @@ let () =
   let pid =
     delayed_writer
       resp_write
-      [ "\x42"; Io.For_tests.encode_response { Wire.status = Wire.Ok; payload = "again" } ]
+      [ "\x42"
+      ; Io.For_tests.encode_response { Wire.status = Wire.Ok; payload = "again" }
+      ]
       0.03
   in
   let r = Io.send d ~retries:1 (Wire.Get { name = "X" }) in

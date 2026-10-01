@@ -235,8 +235,7 @@ let run_gui (cfg : Cli.config) =
                 (if !fullscreen
                  then Sdl.Window.fullscreen_desktop
                  else Sdl.Window.windowed))
-         | `Screenshot ->
-           Printf.printf "screenshot: %s\n%!" (Screenshot.save risc)
+         | `Screenshot -> Printf.printf "screenshot: %s\n%!" (Screenshot.save risc)
          | `Fake_mouse2 -> Core.mouse_button risc 2 down
          | `Oberon_input ->
            let bytes = Ps2.encode ~scancode ~make:down ~kmod in

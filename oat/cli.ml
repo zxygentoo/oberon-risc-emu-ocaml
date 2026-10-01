@@ -35,53 +35,52 @@ let usage =
   Printf.sprintf
     "drive AgentTool.Mod on a live Project Oberon or Extended Oberon system over a \
      serial link\n\n\
-   A stateless CLI: each invocation opens the serial line, runs one command, prints\n\
-   its result, and exits. The wire protocol is PUT/GET/CALL/EDIT — four opcodes\n\
-   between the host and AgentTool.Mod on the device.\n\n\
-   Usage: oat [OPTIONS] <COMMAND> [ARGS]\n\n\
-   Commands:\n\
-  \  check          Check that the wire is up and report the OS variant + version\n\
-  \  read PATH      Read a file from the device; content -> stdout\n\
-  \  write PATH     Create or overwrite a file with content from stdin\n\
-  \  edit PATH OLD NEW\n\
-  \                 Replace a unique occurrence of OLD with NEW in PATH \
-   (str_replace)\n\
-  \  delete PATH    Delete a file\n\
-  \  list-files [PREFIX]\n\
-  \                 List files (TSV: name, size, date); optional name prefix\n\
-  \  list-modules   List loaded modules (TSV: name, refcnt, code addr)\n\
-  \  compile NAME   Compile a module via ORP.Compile; compiler log -> stdout\n\
-  \                 (-s / --new-symbol rewrites the .smb file — use when the\n\
-  \                 module's exported interface changed)\n\
-  \  load NAME      Load a compiled module\n\
-  \  unload NAME    Unload a module (EO: safe-unload via System.Free /f;\n\
-  \                 PO: System.Free — dangling refs possible)\n\
-  \  call CMD [ARGS]\n\
-  \                 Run any Oberon command 'Mod.Proc'; Log delta -> stdout\n\n\
-   Options:\n\
-  \  --timeout SECS       Serial read timeout per request, in seconds [default: %g;\n\
-  \                       %g for `check` on a real serial device (--serial)]\n\
-  \  --baud RATE          Baud rate for a real serial device (--serial), a standard\n\
-  \                       rate; ignored for FIFO pairs [default: %d]\n\
-  \  --char-delay-us US   Inter-byte delay for a real serial device (--serial), in\n\
-  \                       microseconds; ignored for FIFOs [default: %d]\n\
-  \  --retries N          Re-send a request this many times if it desyncs on a real\n\
-  \                       serial device (--serial); ignored for FIFOs [default: %d]\n\
-  \  -h, --help           Print help\n\
-  \  --version            Print version\n\n\
-   Serial connection (one form required):\n\
-  \  --serial PATH        Existing PTY / serial device (raw 8N1 at --baud, set and\n\
-  \                       verified on open)\n\
-  \  --serial-in PATH     FIFO the emulator reads (we write); pair with --serial-out\n\
-  \  --serial-out PATH    FIFO the emulator writes (we read); pair with --serial-in\n\n\
-   Exit codes:\n\
-  \  0  Success.\n\
-  \  1  Tool-level error (file not found, compile failed, unload refused, trap).\n\
-  \  2  Transport / protocol error (no connection, timeout, bad frame, bad args).\n\n\
-   Example:\n\
-  \  mkfifo /tmp/p.in /tmp/p.out                                              # once\n\
-  \  risc --serial-in /tmp/p.in --serial-out /tmp/p.out DiskImage/ProjectOberon.dsk &\n\
-  \  oat --serial-in /tmp/p.in --serial-out /tmp/p.out check\n"
+     A stateless CLI: each invocation opens the serial line, runs one command, prints\n\
+     its result, and exits. The wire protocol is PUT/GET/CALL/EDIT — four opcodes\n\
+     between the host and AgentTool.Mod on the device.\n\n\
+     Usage: oat [OPTIONS] <COMMAND> [ARGS]\n\n\
+     Commands:\n\
+    \  check          Check that the wire is up and report the OS variant + version\n\
+    \  read PATH      Read a file from the device; content -> stdout\n\
+    \  write PATH     Create or overwrite a file with content from stdin\n\
+    \  edit PATH OLD NEW\n\
+    \                 Replace a unique occurrence of OLD with NEW in PATH (str_replace)\n\
+    \  delete PATH    Delete a file\n\
+    \  list-files [PREFIX]\n\
+    \                 List files (TSV: name, size, date); optional name prefix\n\
+    \  list-modules   List loaded modules (TSV: name, refcnt, code addr)\n\
+    \  compile NAME   Compile a module via ORP.Compile; compiler log -> stdout\n\
+    \                 (-s / --new-symbol rewrites the .smb file — use when the\n\
+    \                 module's exported interface changed)\n\
+    \  load NAME      Load a compiled module\n\
+    \  unload NAME    Unload a module (EO: safe-unload via System.Free /f;\n\
+    \                 PO: System.Free — dangling refs possible)\n\
+    \  call CMD [ARGS]\n\
+    \                 Run any Oberon command 'Mod.Proc'; Log delta -> stdout\n\n\
+     Options:\n\
+    \  --timeout SECS       Serial read timeout per request, in seconds [default: %g;\n\
+    \                       %g for `check` on a real serial device (--serial)]\n\
+    \  --baud RATE          Baud rate for a real serial device (--serial), a standard\n\
+    \                       rate; ignored for FIFO pairs [default: %d]\n\
+    \  --char-delay-us US   Inter-byte delay for a real serial device (--serial), in\n\
+    \                       microseconds; ignored for FIFOs [default: %d]\n\
+    \  --retries N          Re-send a request this many times if it desyncs on a real\n\
+    \                       serial device (--serial); ignored for FIFOs [default: %d]\n\
+    \  -h, --help           Print help\n\
+    \  --version            Print version\n\n\
+     Serial connection (one form required):\n\
+    \  --serial PATH        Existing PTY / serial device (raw 8N1 at --baud, set and\n\
+    \                       verified on open)\n\
+    \  --serial-in PATH     FIFO the emulator reads (we write); pair with --serial-out\n\
+    \  --serial-out PATH    FIFO the emulator writes (we read); pair with --serial-in\n\n\
+     Exit codes:\n\
+    \  0  Success.\n\
+    \  1  Tool-level error (file not found, compile failed, unload refused, trap).\n\
+    \  2  Transport / protocol error (no connection, timeout, bad frame, bad args).\n\n\
+     Example:\n\
+    \  mkfifo /tmp/p.in /tmp/p.out                                              # once\n\
+    \  risc --serial-in /tmp/p.in --serial-out /tmp/p.out DiskImage/ProjectOberon.dsk &\n\
+    \  oat --serial-in /tmp/p.in --serial-out /tmp/p.out check\n"
     default_timeout
     default_check_timeout
     default_baud
@@ -128,8 +127,17 @@ let command_of ~new_symbol positionals =
     | [ "unload"; name ] -> Data.Unload name
     | [ "call"; cmd ] -> Data.Call { cmd; args = "" }
     | [ "call"; cmd; args ] -> Data.Call { cmd; args }
-    | (( "check" | "read" | "write" | "edit" | "delete" | "list-files" | "list-modules"
-       | "compile" | "load" | "unload" | "call" ) as name)
+    | (( "check"
+       | "read"
+       | "write"
+       | "edit"
+       | "delete"
+       | "list-files"
+       | "list-modules"
+       | "compile"
+       | "load"
+       | "unload"
+       | "call" ) as name)
       :: _ -> arity_err name
     | name :: _ -> fail (Printf.sprintf "unrecognized command %S" name)
   in
@@ -167,9 +175,9 @@ let parse_argv raw_args =
     ; "--baud", uint_opt "--baud" baud
     ; "--char-delay-us", uint_opt "--char-delay-us" char_delay_us
     ; "--retries", uint_opt "--retries" retries
-    ; "--serial", (fun v -> serial := Some v)
-    ; "--serial-in", (fun v -> serial_in := Some v)
-    ; "--serial-out", (fun v -> serial_out := Some v)
+    ; ("--serial", fun v -> serial := Some v)
+    ; ("--serial-in", fun v -> serial_in := Some v)
+    ; ("--serial-out", fun v -> serial_out := Some v)
     ]
   in
   let rec loop = function

@@ -33,7 +33,9 @@ let rec poll_readable fd timeout =
 let drain t =
   let scratch = Bytes.create 256 in
   let rec go () =
-    if (try poll_readable t.reader 0.0 with Unix.Unix_error _ -> false)
+    if
+      try poll_readable t.reader 0.0 with
+      | Unix.Unix_error _ -> false
     then (
       match Unix.read t.reader scratch 0 256 with
       | n when n > 0 -> go ()
