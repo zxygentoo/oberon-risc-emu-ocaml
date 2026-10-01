@@ -13,7 +13,9 @@ type serial =
       }
 
 type config =
-  { timeout : float (** Serial read timeout per request, seconds. *)
+  { timeout : float option
+    (** Serial read timeout per request, seconds; [None] takes the default — 15,
+        or 2 for [check] on a real serial device, so a dead link fails fast. *)
   ; baud : int (** Real serial device only; ignored for FIFO pairs. *)
   ; char_delay_us : int (** Real serial device only; ignored for FIFO pairs. *)
   ; retries : int (** Real serial device only; the FIFO path never retries. *)
@@ -47,4 +49,8 @@ module For_tests : sig
       then any in-band failure is raised, so it lands above the error line.
       @raise Error.Error on such an in-band failure. *)
   val render : Data.response -> unit
+
+  (** The read timeout {!run} uses: [--timeout] when given, else the default for
+      this command and connection. *)
+  val effective_timeout : config -> float
 end

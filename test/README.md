@@ -25,9 +25,11 @@ What's in the default run:
   `test_fsutil`, `test_seed`), and oat, the live-system serial client
   (`test_oat_io` — golden wire frames, the retry policy, and full exchanges
   over host pipes, `test_oat_device` — the byte channel over host pipes with
-  forked children playing the device, `test_oat_tool_call` — the typed operations
-  over an in-memory wire-typed fake, `test_oat_cli` — parsing and response
-  rendering, `test_oat_error`).
+  forked children playing the device, and the serial line setup (baud, raw
+  mode, read-back) on real pseudo-terminals opened by the test-only
+  `pty_stubs.c`, `test_oat_tool_call` — the typed operations over an in-memory
+  wire-typed fake, `test_oat_cli` — parsing and response rendering,
+  `test_oat_error` — messages and exit codes).
 - **property tests** (QCheck) — `test_prop` (oracle-free laws: U32 algebra,
   memory round-trips, the Z/N flag invariant, device round-trips) and
   `test_risc5_isa` (codec round-trips, differential encode vs hand-rolled
@@ -36,7 +38,7 @@ What's in the default run:
 ## Differential lockstep against the C reference (`@cosim`)
 
 ```sh
-dune build @cosim          # needs a C toolchain
+dune build @cosim          # builds the vendored C emulator
 dune build @cosim --force  # re-run for a fresh random sample
 ```
 
@@ -44,7 +46,8 @@ Runs *live* against Peter De Wachter's C emulator, vendored verbatim under
 [`cosim/`](cosim/) and reached via `#include`: the FP routines on 400,000
 random inputs, 200,000 single random instructions over random state, and 5,000
 bursts of 64 instructions compared after every step. Gated behind the alias
-(not `dune test`) because it needs a C compiler. Note that dune caches success:
+(not `dune test`) because it builds the vendored C emulator. Note that dune
+caches success:
 without `--force` a second run is a no-op, not new random coverage.
 
 The lockstep machine runs with the C reference's 1 MiB memory map; the widened

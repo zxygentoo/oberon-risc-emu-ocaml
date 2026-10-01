@@ -8,7 +8,7 @@ type serial =
       }
 
 type config =
-  { timeout : float
+  { timeout : float option
   ; baud : int
   ; char_delay_us : int
   ; retries : int
@@ -23,6 +23,10 @@ type parsed =
   | Invalid of string
 
 let default_timeout = 15.0
+
+(* [check] is the liveness probe and its reply is immediate, so on a real serial
+   line a dead link should cost seconds, not the general default per attempt. *)
+let default_check_timeout = 2.0
 let default_baud = 115200
 let default_char_delay_us = 600
 let default_retries = 3
@@ -55,9 +59,10 @@ let usage =
   \  call CMD [ARGS]\n\
   \                 Run any Oberon command 'Mod.Proc'; Log delta -> stdout\n\n\
    Options:\n\
-  \  --timeout SECS       Serial read timeout per request, in seconds [default: %g]\n\
-  \  --baud RATE          Baud rate for a real serial device (--serial); ignored\n\
-  \                       for FIFO pairs [default: %d]\n\
+  \  --timeout SECS       Serial read timeout per request, in seconds [default: %g;\n\
+  \                       %g for `check` on a real serial device (--serial)]\n\
+  \  --baud RATE          Baud rate for a real serial device (--serial), a standard\n\
+  \                       rate; ignored for FIFO pairs [default: %d]\n\
   \  --char-delay-us US   Inter-byte delay for a real serial device (--serial), in\n\
   \                       microseconds; ignored for FIFOs [default: %d]\n\
   \  --retries N          Re-send a request this many times if it desyncs on a real\n\
@@ -65,7 +70,8 @@ let usage =
   \  -h, --help           Print help\n\
   \  --version            Print version\n\n\
    Serial connection (one form required):\n\
-  \  --serial PATH        Existing PTY / serial device (raw mode set on open)\n\
+  \  --serial PATH        Existing PTY / serial device (raw 8N1 at --baud, set and\n\
+  \                       verified on open)\n\
   \  --serial-in PATH     FIFO the emulator reads (we write); pair with --serial-out\n\
   \  --serial-out PATH    FIFO the emulator writes (we read); pair with --serial-in\n\n\
    Exit codes:\n\
@@ -77,6 +83,7 @@ let usage =
   \  risc --serial-in /tmp/p.in --serial-out /tmp/p.out DiskImage/ProjectOberon.dsk &\n\
   \  oat --serial-in /tmp/p.in --serial-out /tmp/p.out check\n"
     default_timeout
+    default_check_timeout
     default_baud
     default_char_delay_us
     default_retries
@@ -132,7 +139,7 @@ let command_of ~new_symbol positionals =
 ;;
 
 let parse_argv raw_args =
-  let timeout = ref default_timeout
+  let timeout = ref None
   and baud = ref default_baud
   and char_delay_us = ref default_char_delay_us
   and retries = ref default_retries
@@ -145,7 +152,7 @@ let parse_argv raw_args =
   and version = ref false in
   let float_opt name r v =
     match float_of_string_opt v with
-    | Some x -> r := x
+    | Some x -> r := Some x
     | None -> fail (Printf.sprintf "invalid %s %S" name v)
   in
   let uint_opt name r v =
@@ -253,8 +260,15 @@ let render = function
 
 (* --- wiring --- *)
 
+let effective_timeout cfg =
+  match cfg.timeout, cfg.serial, cfg.command with
+  | Some secs, _, _ -> secs
+  | None, Some (Device _), Data.Check -> default_check_timeout
+  | None, _, _ -> default_timeout
+;;
+
 let run cfg =
-  let timeout = Float.max cfg.timeout 0.001 in
+  let timeout = Float.max (effective_timeout cfg) 0.001 in
   (* Retry only the lossy real-serial path. The FIFO/emulator channel is lossless
      and back-pressured, so a timeout there is a genuine hang — pass it straight
      through rather than waiting out N more timeouts. *)
@@ -289,4 +303,5 @@ let run cfg =
 
 module For_tests = struct
   let render = render
+  let effective_timeout = effective_timeout
 end

@@ -1,5 +1,5 @@
 ; Differential lockstep against the C reference (gated behind the `cosim` alias,
-; so the default `dune test` stays portable — this needs a C toolchain).
+; so the default `dune test` does not build the vendored C emulator).
 ; Run with:  dune build @cosim
 ;
 ; The C sources (risc.c, risc.h, risc-io.h, risc-boot.inc, risc_fp.c, risc-fp.h)

@@ -250,5 +250,43 @@ let () =
   let r = Io.send d ~retries:1 (Wire.Get { name = "X" }) in
   eqs "desync_resend_recovers" r.payload "again";
   reap pid;
+  (* On a real serial line, a desync that outlives the retry budget is reported
+     as a link failure carrying the line and the attempt count; silence ... *)
+  let line = { Device.path = "/dev/ttyX"; baud = 115200 } in
+  let d, _resp_write_keepalive, _sent = harness 0.03 in
+  expect_error
+    "serial_silence_is_link_failure"
+    (function
+      | Error.Serial_link
+          { path = "/dev/ttyX"
+          ; baud = 115200
+          ; attempts = 2
+          ; cause = Error.Timeout { got = 0; want = 1; _ }
+          } -> true
+      | _ -> false)
+    (fun () ->
+       Io.send (Device.For_tests.as_serial d line) ~retries:1 (Wire.Get { name = "X" }));
+  (* ... and garbage alike. *)
+  let d, resp_write, _sent = harness 1.0 in
+  let pid = delayed_writer resp_write [ "\x42" ] 0.02 in
+  expect_error
+    "serial_garbage_is_link_failure"
+    (function
+      | Error.Serial_link { attempts = 1; cause = Error.Bad_sync { got = 0x42; _ }; _ } ->
+        true
+      | _ -> false)
+    (fun () ->
+       Io.send (Device.For_tests.as_serial d line) ~retries:0 (Wire.Get { name = "X" }));
+  reap pid;
+  (* A genuine line failure is not a desync: it passes through unwrapped. *)
+  let d, resp_write, _sent = harness 1.0 in
+  Unix.close resp_write;
+  expect_error
+    "serial_eof_passes_through"
+    (function
+      | Error.Eof -> true
+      | _ -> false)
+    (fun () ->
+       Io.send (Device.For_tests.as_serial d line) ~retries:1 (Wire.Get { name = "X" }));
   summary "oat io checks"
 ;;
