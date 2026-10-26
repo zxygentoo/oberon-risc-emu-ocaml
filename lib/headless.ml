@@ -44,6 +44,8 @@ let fnv1a_word h w =
   step (step (step (step h 0) 1) 2) 3
 ;;
 
+let fnv1a_words words = Array.fold_left fnv1a_word fnv_offset words
+
 (** FNV-1a of the active framebuffer (the visible [fb_width * fb_height] words). *)
 let framebuffer_hash risc =
   let words = Risc.fb_width risc * Risc.fb_height risc in

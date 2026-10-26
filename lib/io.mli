@@ -3,7 +3,11 @@
     Each device is a record of closures over its own mutable state, the OCaml analogue of
     the C's structs of function pointers. The core ([Risc.t]) holds each as an [option]
     and invokes it from inside the CPU step. Every value passed or returned is a machine
-    word in [u32] range. *)
+    word in [u32] range (the core reduces what a device returns modulo 2^32).
+
+    The record types are part of the stable API: an embedder builds them for devices of
+    its own (a lockstep harness's scripted serial line, say). A new capability arrives
+    as a new record, never as a new field on these. *)
 
 (** RS232 serial line: PCLink file transfer or a raw host serial port. *)
 type serial =

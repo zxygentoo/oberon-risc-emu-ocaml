@@ -31,6 +31,14 @@ let with_boot_machine f =
   f (Headless.standard_machine ~disk Clipboard.noop_host)
 ;;
 
+(* fnv1a_words over the framebuffer's words is framebuffer_hash. *)
+let fnv1a_words_matches risc =
+  let words =
+    Array.init (Risc.fb_width risc * Risc.fb_height risc) (Risc.framebuffer_word risc)
+  in
+  Headless.fnv1a_words words = Headless.framebuffer_hash risc
+;;
+
 let check_hashes frames risc (want_fb, want_state) =
   eqx64
     (Printf.sprintf "frames=%d framebuffer_fnv1a" frames)
@@ -64,7 +72,8 @@ let () =
    | (f, want_fb, want_state) :: _ ->
      with_boot_machine (fun risc ->
        Headless.run_frames risc f;
-       check_hashes f risc (want_fb, want_state))
+       check_hashes f risc (want_fb, want_state);
+       check "fnv1a_words_is_framebuffer_hash" (fnv1a_words_matches risc))
    | [] -> ());
   summary "boot golden checks"
 ;;

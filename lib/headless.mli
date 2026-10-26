@@ -23,6 +23,11 @@ val standard_machine : ?disk:Disk.t -> Clipboard.host -> Risc.t
     checkpoints); a pure observer keeps the run deterministic. *)
 val run_frames : ?on_frame:(int -> unit) -> Risc.t -> int -> unit
 
+(** FNV-1a over [words], each fed as its 4 little-endian bytes — the hash
+    {!framebuffer_hash} and {!state_hash} compute, for comparing a word dump from
+    elsewhere (another implementation's framebuffer, say) with theirs. *)
+val fnv1a_words : int array -> int64
+
 (** FNV-1a of the active framebuffer (the visible [fb_width * fb_height] words). *)
 val framebuffer_hash : Risc.t -> int64
 
