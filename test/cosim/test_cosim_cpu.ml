@@ -16,7 +16,7 @@
    (MOV-flags-read, 0x53 vs C's 0xD0) is filtered, dynamically too (a store can
    forge one). Gated behind the `cosim` alias. Run with: dune build @cosim *)
 
-open Risc_core
+open Oberon_risc
 module Q = QCheck2
 module G = QCheck2.Gen
 module F = Risc.For_tests

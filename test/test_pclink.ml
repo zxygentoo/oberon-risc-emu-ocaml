@@ -1,8 +1,8 @@
 (* PCLink protocol tests, ported from the Rust pclink.rs tests. They drive the
-   device through its public {!Risc_core.Io.serial} interface ([to_serial]), so
+   device through its public {!Oberon_risc.Io.serial} interface ([to_serial]), so
    they exercise get_job/read_data/write_data exactly as the CPU would. *)
 
-open Risc_core
+open Oberon_risc
 open Test_harness
 
 let ack = 0x10

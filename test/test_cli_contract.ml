@@ -54,7 +54,7 @@ let () =
          check (t "help_usage") (contains ~sub:"Usage:" out);
          let code, out, _ = run exe [ "--version" ] in
          check (t "version_exit_0") (code = 0);
-         eqs (t "version_line") out (name ^ " " ^ Risc_core.Version.version ^ "\n");
+         eqs (t "version_line") out (name ^ " " ^ Oberon_risc.Version.version ^ "\n");
          let code, _, err = run exe [ "--bogus" ] in
          check (t "unknown_option_exit_2") (code = 2);
          check (t "unknown_option_points_at_help") (contains ~sub:"--help" err);

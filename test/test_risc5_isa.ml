@@ -13,7 +13,7 @@
    - that [encode] rejects a field outside its bits instead of masking it into a
      different instruction, and accepts every boundary value. *)
 
-open Risc_core
+open Oberon_risc
 open Risc5_isa
 module Q = QCheck2
 module G = QCheck2.Gen

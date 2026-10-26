@@ -55,7 +55,7 @@ module Wire = struct
     }
 
   let not_unique_count r =
-    if String.length r.payload < 4 then 0 else Risc_core.U32.get_le r.payload 0
+    if String.length r.payload < 4 then 0 else Oberon_risc.U32.get_le r.payload 0
   ;;
 
   let edit_old_limit = 1024

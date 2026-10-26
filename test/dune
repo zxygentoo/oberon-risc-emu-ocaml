@@ -1,4 +1,4 @@
-; Core tests (risc_core only) — including the vendored FP vectors and the boot
+; Core tests (oberon_risc only) — including the vendored FP vectors and the boot
 ; golden, which need their data files as deps.
 
 (tests
@@ -11,7 +11,7 @@
   test_raw_serial
   test_fp_vectors
   test_boot)
- (libraries risc_core unix test_harness)
+ (libraries oberon_risc unix test_harness)
  (deps data/fp_vectors.txt ../DiskImage/Oberon-2020-08-18.dsk))
 
 ; Frontend tests (the testable bin library + tsdl; no SDL_Init at runtime).
@@ -19,14 +19,14 @@
 
 (tests
  (names test_ps2 test_cli test_scale test_hotkeys test_screenshot)
- (libraries oberon_frontend risc_core tsdl imagelib test_harness))
+ (libraries oberon_frontend oberon_risc tsdl imagelib test_harness))
 
 ; Instruction-codec tests (QCheck) — the shared Risc5_isa encode/decode + the
 ; differential check of encode against the hand-rolled golden encoders.
 
 (test
  (name test_risc5_isa)
- (libraries risc_core qcheck-core qcheck-core.runner)
+ (libraries oberon_risc qcheck-core qcheck-core.runner)
  ; dune doesn't track env vars by default; without this a cached success would
  ; ignore a later QCHECK_SEED.
  (deps
@@ -37,7 +37,7 @@
 (test
  (name test_prop)
  (libraries
-  risc_core
+  oberon_risc
   oberon_frontend
   tsdl
   unix
@@ -65,7 +65,7 @@
 
 (test
  (name test_cli_contract)
- (libraries risc_core unix test_harness)
+ (libraries oberon_risc unix test_harness)
  (deps
   ../bin/risc.exe
   ../tools/bin/ob2txt.exe
@@ -95,11 +95,11 @@
   (language c)
   (names pty_stubs)))
 
-; Embedded-seed structural checks (risc_core for boot_inner_core).
+; Embedded-seed structural checks (oberon_risc for boot_inner_core).
 
 (test
  (name test_seed)
- (libraries oberon_tools risc_core test_harness))
+ (libraries oberon_tools oberon_risc test_harness))
 
 ; Pipeline filesystem-helper tests (need unix for mkdir/getpid).
 
@@ -111,7 +111,7 @@
 
 (test
  (name test_shim)
- (libraries risc_core test_harness))
+ (libraries oberon_risc test_harness))
 
 ; End-to-end image-builder round-trip (opt-in: self-skips unless OBERON_ROUNDTRIP
 ; is set, since it boots the shim and compiles the whole system).

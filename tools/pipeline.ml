@@ -1,6 +1,6 @@
 (** The shared disk-image build pipeline (port of [host_tools::pipeline]). *)
 
-open Risc_core
+open Oberon_risc
 
 type seed =
   { toolchain : (string * string) list

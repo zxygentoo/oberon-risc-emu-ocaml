@@ -1,7 +1,7 @@
 (** The wire codec and the exchange discipline (see io.mli). *)
 
 module Wire = Data.Wire
-module U32 = Risc_core.U32
+module U32 = Oberon_risc.U32
 
 let sync_req = 0xA5
 let sync_resp = 0x5A

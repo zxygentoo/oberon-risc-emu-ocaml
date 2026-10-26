@@ -8,7 +8,7 @@
 
 (** [parse ~name ~usage ~help ?flags args] walks argv-style [args] with the shared
     conventions: [-h]/[--help] prints [usage] plus [help] and exits 0; [--version]
-    prints "[name] {!Risc_core.Version.version}" and exits 0; an argument matching a
+    prints "[name] {!Oberon_risc.Version.version}" and exits 0; an argument matching a
     name in [flags] sets its ref; any other option is a usage error. Returns the
     positional arguments in order (a lone ["-"] counts as positional). *)
 val parse

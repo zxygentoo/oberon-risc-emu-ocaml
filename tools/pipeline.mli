@@ -1,7 +1,7 @@
 (** The shared disk-image build pipeline behind [build-po-image] and [build-eo-image]
     (port of [host_tools::pipeline]). Compiles a whole Oberon source tree against an
     embedded host toolchain, links a fresh inner core, and assembles a bootable
-    [Oberon.dsk] — driving {!Risc_core.Shim} one Oberon command at a time. Each builder
+    [Oberon.dsk] — driving {!Oberon_risc.Shim} one Oberon command at a time. Each builder
     supplies only its {!seed} and a name. *)
 
 (** What sets one builder apart: the embedded toolchain seed and a name. *)

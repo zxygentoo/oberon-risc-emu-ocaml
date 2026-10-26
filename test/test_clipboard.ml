@@ -1,8 +1,8 @@
 (* Clipboard GET/PUT bridge tests, ported from the Rust clipboard.rs tests. They
-   drive the bridge through its public {!Risc_core.Io.clipboard} interface, with a
+   drive the bridge through its public {!Oberon_risc.Io.clipboard} interface, with a
    fake host backed by a mutable cell. *)
 
-open Risc_core
+open Oberon_risc
 open Test_harness
 
 (* A fake host clipboard backed by a mutable cell, returned alongside it. *)

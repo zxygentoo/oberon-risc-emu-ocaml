@@ -1,7 +1,7 @@
 (** Framebuffer screenshots: 8-bit grayscale PNGs (via imagelib), mpv-style
     [risc-shot%04d.png] naming in the working directory. *)
 
-module Core = Risc_core.Risc
+module Core = Oberon_risc.Risc
 
 let image_of ~width_words ~height ~word =
   let img = Image.create_grey ~max_val:255 (width_words * 32) height in

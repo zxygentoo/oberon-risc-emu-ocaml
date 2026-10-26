@@ -2,11 +2,11 @@
     {!Cli.config}, the windowed 60 fps SDL loop, and the [--headless] runner
     (deterministic bounded mode for CI, or an unbounded windowless session). Port of
     [sdl-main.c]'s main loop (the Rust port's [app.rs]); the pure machine lives in
-    {!Risc_core}. *)
+    {!Oberon_risc}. *)
 
 open Tsdl
-module RC = Risc_core
-module Core = Risc_core.Risc
+module RC = Oberon_risc
+module Core = Oberon_risc.Risc
 
 let cpu_hz = RC.Headless.cpu_hz
 let fps = RC.Headless.fps

@@ -1,5 +1,5 @@
 (** The SDL-backed host clipboard, bridging the OS clipboard to the core's
-    {!Risc_core.Clipboard} state machine. *)
+    {!Oberon_risc.Clipboard} state machine. *)
 
-(** A {!Risc_core.Clipboard.host} backed by SDL's clipboard. *)
-val host : Risc_core.Clipboard.host
+(** A {!Oberon_risc.Clipboard.host} backed by SDL's clipboard. *)
+val host : Oberon_risc.Clipboard.host

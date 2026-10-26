@@ -5,7 +5,7 @@
    Gated behind the `cosim` dune alias (needs a C toolchain + the vendored C), so
    it is not part of the default `dune test`. Run with: dune build @cosim *)
 
-open Risc_core
+open Oberon_risc
 module Q = QCheck2
 module G = QCheck2.Gen
 

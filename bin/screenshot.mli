@@ -4,7 +4,7 @@
     framebuffer; the golden hashes are unaffected. *)
 
 (** The framebuffer as a top-down grayscale image. [word i] is the 1-bit
-    framebuffer word at index [i] (as {!Risc_core.Risc.framebuffer_word}): 32
+    framebuffer word at index [i] (as {!Oberon_risc.Risc.framebuffer_word}): 32
     LSB-leftmost pixels per word, line 0 at the bottom; set bits render white. *)
 val image_of : width_words:int -> height:int -> word:(int -> int) -> Image.image
 
@@ -18,4 +18,4 @@ val next_name : unit -> string
 (** Capture the machine's native framebuffer to the next free shot name, written
     atomically (temp file + rename, so the file appearing means it is complete);
     returns the file name. *)
-val save : Risc_core.Risc.t -> string
+val save : Oberon_risc.Risc.t -> string

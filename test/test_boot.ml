@@ -6,7 +6,7 @@
    Rust suite's BOOT_GOLDEN (whose values were produced against the live C
    reference at each frame). *)
 
-open Risc_core
+open Oberon_risc
 open Test_harness
 
 let disk_image = "../DiskImage/Oberon-2020-08-18.dsk"

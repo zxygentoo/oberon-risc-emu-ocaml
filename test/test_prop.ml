@@ -3,7 +3,7 @@
    complement the enumerated tests and the FP vectors by exploring the input
    spaces randomly. *)
 
-open Risc_core
+open Oberon_risc
 open Tsdl
 module Q = QCheck2
 module G = QCheck2.Gen

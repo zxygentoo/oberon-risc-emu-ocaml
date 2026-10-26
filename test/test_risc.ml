@@ -1,9 +1,9 @@
 (* Regression tests ported from the Rust `risc.rs` / `fp.rs` unit tests. The
    end-to-end bit-exactness is proven by the headless golden hashes (see the
    `validate` runner and the README); these guard the individual instruction
-   paths. White-box access to the machine goes through {!Risc_core.Risc.For_tests}. *)
+   paths. White-box access to the machine goes through {!Oberon_risc.Risc.For_tests}. *)
 
-open Risc_core
+open Oberon_risc
 open Test_harness
 module F = Risc.For_tests
 

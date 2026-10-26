@@ -1,10 +1,10 @@
 ; Host-side Oberon tools shared library: the text converters, the .packonly
 ; manifest, the on-disk FS reader, and the disk-image build pipeline. Depends on
-; risc_core for the shim (Shim.run) and Oberon_name.
+; oberon_risc for the shim (Shim.run) and Oberon_name.
 
 (library
  (name oberon_tools)
- (libraries risc_core unix))
+ (libraries oberon_risc unix))
 
 ; Embed the vendored toolchain assets (bootstrap objects + host glue) as an OCaml
 ; module (Assets_data) via ocaml-crunch — the dune analogue of Rust's

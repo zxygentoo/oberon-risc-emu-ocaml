@@ -1,8 +1,8 @@
 (* Raw serial line test (POSIX), ported from raw_serial.rs. /dev/null is always
-   writable, and reads hit EOF -> 0. Driven through the {!Risc_core.Io.serial}
+   writable, and reads hit EOF -> 0. Driven through the {!Oberon_risc.Io.serial}
    interface. *)
 
-open Risc_core
+open Oberon_risc
 open Test_harness
 
 let rx_ready (s : Io.serial) = s.serial_read_status () land 1 <> 0
