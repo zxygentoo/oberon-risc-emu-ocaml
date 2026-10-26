@@ -4,8 +4,9 @@
    emulator's hot loop stays non-allocating. *)
 
 (* Words are unsigned 32-bit values held in a native [int]; that needs a 64-bit
-   host (0xFFFF_FFFF must stay non-negative). Fail loud on a 32-bit build. *)
-let () = assert (Sys.int_size > 32)
+   host (0xFFFF_FFFF must stay non-negative). Fail loud on a 32-bit build — with
+   [failwith], which [-noassert] can't compile away. *)
+let () = if Sys.int_size <= 32 then failwith "Risc5_isa: needs a 64-bit OCaml"
 
 type word = int
 type reg = int
@@ -186,7 +187,36 @@ type instr =
       ; target : target
       }
 
-let encode = function
+(* Every field must fit its bits: a value that doesn't would be masked, or
+   shifted into its neighbour (register 16 sets the v bit), and come out as a
+   different instruction that looks perfectly valid. The ranges are exactly
+   what [decode] produces, so [encode] accepts precisely the instructions that
+   round-trip. *)
+let check what lo hi n =
+  if n < lo || n > hi
+  then invalid_arg (Printf.sprintf "Risc5_isa.encode: %s %d outside %d..%d" what n lo hi)
+;;
+
+let check_reg what r = check what 0 15 r
+
+let check_fields = function
+  | Alu { a; b; operand; _ } ->
+    check_reg "register a" a;
+    check_reg "register b" b;
+    (match operand with
+     | Reg c -> check_reg "register c" c
+     | Imm i -> check "immediate" 0 0xFFFF i)
+  | Load { a; base; off; _ } | Store { a; base; off; _ } ->
+    check_reg "register a" a;
+    check_reg "base register" base;
+    check "memory offset" (-0x8_0000) 0x7_FFFF off
+  | Branch { target = To_reg c; _ } -> check_reg "target register" c
+  | Branch { target = To_off o; _ } -> check "branch offset" (-0x80_0000) 0x7F_FFFF o
+;;
+
+let encode i =
+  check_fields i;
+  match i with
   | Alu { op; u; v; a; b; operand } ->
     let w = (a lsl 24) lor (b lsl 20) lor (int_of_op op lsl 16) in
     let w = if u then w lor ubit else w in
