@@ -247,7 +247,10 @@ let files_seek host h pos whence =
        | 2 -> f.len
        | _ -> 0
      in
-     f.pos <- max 0 (base + U32.to_i32 pos)
+     (* Clamped to the file-size cap: nothing past it can be written or read,
+        and repeated relative seeks must not walk f.pos out of u32 range —
+        Files.Tell hands it to the guest. *)
+     f.pos <- min max_file_bytes (max 0 (base + U32.to_i32 pos))
    | None -> ());
   0
 ;;
@@ -266,7 +269,9 @@ let files_read host h adr siz ram =
       Bytes.make siz '\000'
       (* tail is zero-filled, as in norebo.c *)
     in
-    Bytes.blit f.data start buf 0 n;
+    (* n = 0 past the end, where start may also be past the buffer itself (a seek
+       beyond it) — nothing to copy, and Bytes.blit would raise. *)
+    if n > 0 then Bytes.blit f.data start buf 0 n;
     f.pos <- start + n;
     mem_write_bytes ram adr buf;
     n
