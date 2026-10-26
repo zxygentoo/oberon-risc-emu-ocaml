@@ -18,8 +18,9 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 This project is an OCaml port of the Oberon RISC Emulator (oberon-risc-emu),
 Copyright (c) 2014 Peter De Wachter, used under the ISC license; it follows the
-Rust port oberon-risc-emu-rs. The C reference vendored under test/cosim/ is
-Peter De Wachter's original, used under the same ISC terms.
+Rust port oberon-risc-emu-rs.
 
-Bundled Project Oberon 2013 material — the disk image under DiskImage/ — is the
-work of its respective authors under the same ISC terms.
+The repository also carries third-party material under its own terms — the C
+reference under test/cosim/, the Project Oberon 2013 disk image under DiskImage/,
+the build toolchain assets under assets/ (from project-norebo and Extended
+Oberon). THIRD_PARTY.md lists each item, its upstream, and its notice.

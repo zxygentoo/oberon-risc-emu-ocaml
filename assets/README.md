@@ -38,11 +38,11 @@ eo/
 The upstream Wirth/Pirklbauer sources proper are *not* vendored here — they are
 fetched separately into the `sources_dir` passed to the builders.
 
-This material is under the **ISC license**, the same license as this repository,
-but the copyright is held upstream. The Norebo-specific modules and build tooling
-are © Peter De Wachter (project-norebo); the Extended Oberon modules are © Andreas
-Pirklbauer; both derive from Project Oberon 2013, whose notice — reproduced here as
-the license requires — is:
+The copyright is held upstream; [`THIRD_PARTY.md`](../THIRD_PARTY.md) has the
+details. project-norebo (Peter De Wachter) is distributed under its `license.txt`,
+which is the Project Oberon 2013 notice below; Extended Oberon (Andreas Pirklbauer)
+states no license of its own. Both derive from Project Oberon 2013, whose notice —
+reproduced here as the license requires — is:
 
 ```
 Project Oberon, Revised Edition 2013
