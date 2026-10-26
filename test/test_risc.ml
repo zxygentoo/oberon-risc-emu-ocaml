@@ -102,6 +102,12 @@ let () =
   check "cpu_ram_replaced" (Risc.Cpu.ram r != before);
   (* For_tests still re-exports the same functions. *)
   check "for_tests_reexports_cpu" (F.single_step == Risc.Cpu.single_step);
+  (* Boot_rom hands out copies: a caller's write reaches no later caller or machine. *)
+  let rom = Boot_rom.bootloader () in
+  eq "boot_rom_512_words" (Array.length rom) 512;
+  eqx "boot_rom_first_word" rom.(0) 0xE700_0151;
+  rom.(0) <- 0;
+  eqx "boot_rom_copy_isolated" (Boot_rom.bootloader ()).(0) 0xE700_0151;
   (* ---- MOV ---- *)
   let r = cpu () in
   (ram r).(0) <- reg 1 0 0 1 0 mov 0x1234;

@@ -437,7 +437,7 @@ let make () =
     ; fb_height
     ; damage = { dx1 = 0; dy1 = 0; dx2 = fb_width - 1; dy2 = fb_height - 1 }
     ; ram = Array.make (default_mem_size / 4) 0
-    ; rom = Array.copy Boot_rom.bootloader
+    ; rom = Boot_rom.bootloader ()
     }
   in
   reset t;
