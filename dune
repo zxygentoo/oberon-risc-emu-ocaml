@@ -8,3 +8,8 @@
  (release
   (ocamlopt_flags
    (:standard -inline 100))))
+
+; build/ is the Makefile's image-pipeline output (extracted trees, stock images,
+; and whatever else gets parked there) — not source; keep dune out of it.
+
+(dirs :standard \ build)

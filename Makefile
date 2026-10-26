@@ -12,7 +12,18 @@
 #
 # `make image` builds both. `make po-image` / `make eo-image` build one each.
 # Unlike upstream, `clean` must NOT remove DiskImage/ — the stock PO image is
-# vendored there; only the two built images are artifacts.
+# vendored there; only the two built images are artifacts. Nor build/ wholesale:
+# it is a handy place for other files (SD-card dumps, say), so `clean` removes
+# exactly what these rules write there, and `distclean` the EO download too.
+
+# Every recipe runs under `sh -e`: the first failing command fails the target —
+# a patch that no longer applies must stop the build, not ship an image without
+# it. A target whose recipe fails is deleted, so no half-written image survives.
+.SHELLFLAGS := -ec
+.DELETE_ON_ERROR:
+
+# The dune command; e.g. DUNE='opam exec --switch default -- dune'.
+DUNE        ?= dune
 
 BIN         := _build/default
 RISC        := $(BIN)/bin/risc.exe
@@ -48,10 +59,18 @@ EO_MOD_DIR  := oat/Mod/ExtendedOberon
 EO_PATCHES  := $(wildcard $(EO_MOD_DIR)/*.patch)
 EO_NEW_MODS := $(wildcard $(EO_MOD_DIR)/*.Mod)
 
+# The image toolchain, by content (see $(TOOLCHAIN_SUM) below).
+TOOLCHAIN     := $(BUILD_PO) $(BUILD_EO) $(EXTRACT) $(OB2TXT) $(TXT2OB)
+TOOLCHAIN_SUM := build/toolchain.cksum
+
+# GNU tar warns about the macOS pax headers in the EO tarball; others lack the flag.
+TAR_QUIET   := $(shell tar --version 2>/dev/null | grep -q GNU && echo --warning=no-unknown-keyword)
+SHA256      := $(shell command -v sha256sum >/dev/null 2>&1 && echo sha256sum || echo 'shasum -a 256')
+
 FIFO_IN     ?= /tmp/p.in
 FIFO_OUT    ?= /tmp/p.out
 
-.PHONY: image po-image eo-image tools oat po-source eo-source po-emu eo-emu check-fifos clean test test-unit test-po test-eo
+.PHONY: image po-image eo-image tools oat po-source eo-source po-emu eo-emu check-fifos clean distclean test test-unit test-po test-eo
 
 # Default goal — bare `make` builds both images.
 .DEFAULT_GOAL := image
@@ -66,7 +85,7 @@ eo-image: tools $(EO_IMAGE)
 
 # --- PO image ----------------------------------------------------------------
 
-$(PO_IMAGE): $(PO_SRC)/.stamp $(PO_PATCHES) $(PO_NEW_MODS) $(COMMON_MODS) | tools
+$(PO_IMAGE): $(PO_SRC)/.stamp $(PO_PATCHES) $(PO_NEW_MODS) $(COMMON_MODS) $(TOOLCHAIN_SUM)
 	@rm -rf build/po-src && mkdir -p build/po-src
 	cp -a $(PO_SRC)/. build/po-src/
 	@for p in $(PO_PATCHES); do \
@@ -87,14 +106,15 @@ $(PO_IMAGE): $(PO_SRC)/.stamp $(PO_PATCHES) $(PO_NEW_MODS) $(COMMON_MODS) | tool
 
 po-source: $(PO_SRC)/.stamp
 
-$(PO_SRC)/.stamp: $(PO_STOCK) | tools
-	@mkdir -p $(PO_SRC)
+# Extract into a fresh dir: leftovers from an earlier extraction would be built.
+$(PO_SRC)/.stamp: $(PO_STOCK) $(TOOLCHAIN_SUM)
+	@rm -rf $(PO_SRC) && mkdir -p $(PO_SRC)
 	$(EXTRACT) $(PO_STOCK) $(PO_SRC)
 	@touch $@
 
 # --- EO image ----------------------------------------------------------------
 
-$(EO_IMAGE): $(EO_SRC)/.stamp $(EO_PATCHES) $(EO_NEW_MODS) $(COMMON_MODS) | tools
+$(EO_IMAGE): $(EO_SRC)/.stamp $(EO_PATCHES) $(EO_NEW_MODS) $(COMMON_MODS) $(TOOLCHAIN_SUM)
 	@rm -rf build/eo-src && mkdir -p build/eo-src
 	cp -a $(EO_SRC)/. build/eo-src/
 	@for p in $(EO_PATCHES); do \
@@ -115,11 +135,12 @@ $(EO_IMAGE): $(EO_SRC)/.stamp $(EO_PATCHES) $(EO_NEW_MODS) $(COMMON_MODS) | tool
 
 eo-source: $(EO_SRC)/.stamp
 
-$(EO_SRC)/.stamp: $(EO_TARBALL) | tools
+$(EO_SRC)/.stamp: $(EO_TARBALL) $(TOOLCHAIN_SUM)
 	@mkdir -p build
-	tar --warning=no-unknown-keyword -xzf $(EO_TARBALL) \
+	tar $(TAR_QUIET) -xzf $(EO_TARBALL) \
 	  -C build --strip-components=1 S3RISCinstall/RISC.img
 	mv build/RISC.img $(EO_STOCK)
+	@rm -rf $(EO_SRC)
 	$(EXTRACT) $(EO_STOCK) $(EO_SRC)
 	@touch $@
 
@@ -133,15 +154,26 @@ $(EO_TARBALL):
 	else \
 	  echo "need curl or wget to fetch the EO stock image" >&2; exit 1; \
 	fi
-	@echo "$(EO_TARBALL_SHA256)  $@.tmp" | sha256sum --check --quiet - || \
-	  { echo "$@: checksum mismatch — refusing to build from it" >&2; rm -f $@.tmp; exit 1; }
+	@got=$$($(SHA256) $@.tmp | cut -d' ' -f1); \
+	if [ "$$got" != "$(EO_TARBALL_SHA256)" ]; then \
+	  echo "$@: checksum mismatch — refusing to build from it" >&2; rm -f $@.tmp; exit 1; \
+	fi
 	@mv $@.tmp $@
 
 # --- prerequisites -----------------------------------------------------------
 
 # dune owns staleness for every binary; a cheap no-op when nothing changed.
 tools:
-	dune build
+	$(DUNE) build
+
+# The toolchain's checksum, rewritten only when it changes. The images depend on
+# it rather than on the binaries' mtimes, so a changed builder, compiler seed or
+# converter rebuilds them, and a no-op `dune build` does not. (`tools` is phony,
+# so this recipe runs every time; make re-reads the stamp's mtime afterwards.)
+$(TOOLCHAIN_SUM): tools
+	@mkdir -p build
+	@cksum $(TOOLCHAIN) >$@.tmp
+	@if cmp -s $@.tmp $@; then rm $@.tmp; else mv $@.tmp $@; fi
 
 oat: tools
 
@@ -178,7 +210,7 @@ check-fifos:
 test: test-unit test-po test-eo
 
 test-unit:
-	dune runtest
+	$(DUNE) runtest
 
 test-po: po-image
 	test/integration.sh $(PO_IMAGE) $(RISC) $(OAT_BIN)
@@ -188,5 +220,12 @@ test-eo: eo-image
 
 # --- cleanup -----------------------------------------------------------------
 
+# Exactly what the rules above write; anything else in build/ is left alone.
 clean:
-	rm -rf build $(PO_IMAGE) $(EO_IMAGE)
+	rm -rf $(PO_SRC) $(EO_SRC) build/po-src build/eo-src
+	rm -f $(EO_STOCK) build/RISC.img $(EO_TARBALL).tmp $(TOOLCHAIN_SUM) $(TOOLCHAIN_SUM).tmp
+	rm -f $(PO_IMAGE) $(EO_IMAGE)
+
+# clean, plus the EO download (the next eo-image fetches it again).
+distclean: clean
+	rm -f $(EO_TARBALL)

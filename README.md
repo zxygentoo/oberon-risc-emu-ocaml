@@ -114,6 +114,12 @@ mkfifo /tmp/p.in /tmp/p.out          # once
 make po-emu                          # boot the image on the FIFO pair, windowed
 ```
 
+The images rebuild when their sources, the patches or the toolchain change, and
+a step that fails (a patch that no longer applies) fails the build. `make clean`
+removes exactly what the pipeline wrote — other files in `build/` are left
+alone — and `make distclean` also drops the EO download. Set `DUNE=` to run
+the build through another dune (e.g. `DUNE='opam exec -- dune'`).
+
 then, from another shell:
 
 ```sh

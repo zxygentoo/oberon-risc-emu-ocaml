@@ -24,10 +24,13 @@ cleanup() {
 trap cleanup EXIT
 
 mkfifo "$T/p.in" "$T/p.out"
+# Boot a copy: the battery writes files (and compiles modules) on the disk, and
+# the image under test must stay exactly as it was built.
+cp "$IMAGE" "$T/image.dsk"
 # Display env deliberately scrubbed: headless must never need (or open) a
 # window, and this keeps a regression to windowed mode from passing silently.
 env -u DISPLAY -u WAYLAND_DISPLAY \
-    "$RISC" --headless --serial-in "$T/p.in" --serial-out "$T/p.out" "$IMAGE" \
+    "$RISC" --headless --serial-in "$T/p.in" --serial-out "$T/p.out" "$T/image.dsk" \
     >"$T/risc.log" 2>&1 &
 EMU_PID=$!
 

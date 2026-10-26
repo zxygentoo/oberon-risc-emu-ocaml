@@ -83,8 +83,11 @@ full `oat` surface against the running system from
 (the wire OP_EDIT, the >1 KiB host-side fallback, and the error statuses), a
 write at the 64 KiB PUT limit (commands must still answer after it),
 compile/load/call, listings, trap survival (a trapping call reports cleanly
-and the wire stays up), and deletes — plus, on Extended Oberon, a full
-edit → compile → unload → reload hot swap. Kept out of `dune test` because it
+and the wire stays up), the wire's bounds (an over-long name sent as a raw
+frame, an invalid file name, 2000-byte CALL and EDIT payloads, a command that
+empties the Log), and deletes — plus, on Extended Oberon, a full
+edit → compile → unload → reload hot swap. It boots a copy of the image, so
+the built image stays exactly as built. Kept out of `dune test` because it
 boots a complete Oberon and needs the built image.
 
 ## Reproducing a QCheck failure
