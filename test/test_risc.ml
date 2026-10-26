@@ -75,6 +75,39 @@ let c r = F.flags r land flag_c <> 0
 let v r = F.flags r land flag_v <> 0
 
 let () =
+  (* ---- Risc.Cpu, the stable stepping surface ---- *)
+  (* The flag packing is part of the contract (lockstep harnesses compare it). *)
+  check
+    "cpu_flag_masks"
+    (Risc.Cpu.(flag_z, flag_n, flag_c, flag_v) = (flag_z, flag_n, flag_c, flag_v));
+  let r = cpu () in
+  (* regs and ram are live views; cpu_state agrees with the accessors. *)
+  (Risc.Cpu.regs r).(5) <- 0xBEEF;
+  (Risc.Cpu.ram r).(0) <- reg 0 0 0 1 0 mov 5 (* R1 := R5 *);
+  Risc.Cpu.set_flags r (flag_c lor flag_v);
+  Risc.Cpu.set_h r 7;
+  Risc.Cpu.single_step r;
+  eqx "cpu_regs_live" (Risc.Cpu.regs r).(1) 0xBEEF;
+  eqx "cpu_pc_words" (Risc.Cpu.pc r) 1;
+  let st = Risc.cpu_state r in
+  check
+    "cpu_state_agrees"
+    (st.pc = Risc.Cpu.pc r
+     && st.r = Risc.Cpu.regs r
+     && st.h = Risc.Cpu.h r
+     && st.flags = Risc.Cpu.flags r);
+  (* configure_memory replaces RAM: a reference held from before goes stale. *)
+  let before = Risc.Cpu.ram r in
+  Risc.configure_memory r ~megabytes:2 ~width:1024 ~height:768;
+  check "cpu_ram_replaced" (Risc.Cpu.ram r != before);
+  (* For_tests still re-exports the same functions. *)
+  check "for_tests_reexports_cpu" (F.single_step == Risc.Cpu.single_step);
+  (* Boot_rom hands out copies: a caller's write reaches no later caller or machine. *)
+  let rom = Boot_rom.bootloader () in
+  eq "boot_rom_512_words" (Array.length rom) 512;
+  eqx "boot_rom_first_word" rom.(0) 0xE700_0151;
+  rom.(0) <- 0;
+  eqx "boot_rom_copy_isolated" (Boot_rom.bootloader ()).(0) 0xE700_0151;
   (* ---- MOV ---- *)
   let r = cpu () in
   (ram r).(0) <- reg 1 0 0 1 0 mov 0x1234;
@@ -309,7 +342,7 @@ let () =
   let d = 0x000E_7F00 / 4 in
   (* The display-driver magic block lands at the default display start. *)
   let r = Risc.make () in
-  Risc.configure_memory r 2 800 600;
+  Risc.configure_memory r ~megabytes:2 ~width:800 ~height:600;
   eqx "cfg_fb_width" (Risc.fb_width r) (800 / 32);
   eqx "cfg_fb_height" (Risc.fb_height r) 600;
   eqx "cfg_magic" (ram r).(d) 0x5369_7A67;
@@ -317,15 +350,15 @@ let () =
   eqx "cfg_magic_h" (ram r).(d + 2) 600;
   eqx "cfg_magic_display_start" (ram r).(d + 3) (2 lsl 20);
   (* RAM megabytes clamp to [1, 32] (read back via the display_start magic word). *)
-  Risc.configure_memory r 0 1024 768;
+  Risc.configure_memory r ~megabytes:0 ~width:1024 ~height:768;
   eqx "cfg_megs_clamp_lo" (ram r).(d + 3) (1 lsl 20);
-  Risc.configure_memory r 99 1024 768;
+  Risc.configure_memory r ~megabytes:99 ~width:1024 ~height:768;
   eqx "cfg_megs_clamp_hi" (ram r).(d + 3) (32 lsl 20);
   (* Screen dims clamp to [32, 4096]; width rounds down to a multiple of 32. *)
-  Risc.configure_memory r 1 100_000 7;
+  Risc.configure_memory r ~megabytes:1 ~width:100_000 ~height:7;
   eqx "cfg_w_clamp" (Risc.fb_width r) (4096 / 32);
   eqx "cfg_h_clamp" (Risc.fb_height r) 32;
-  Risc.configure_memory r 1 1000 768;
+  Risc.configure_memory r ~megabytes:1 ~width:1000 ~height:768;
   eqx "cfg_w_round" (Risc.fb_width r) (992 / 32);
   (* ---- Branched-into-the-void resets to the boot ROM ---- *)
   let r = cpu () in

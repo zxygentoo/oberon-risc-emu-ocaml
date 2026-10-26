@@ -24,11 +24,12 @@ let led_logger : RC.Io.led =
   }
 ;;
 
-(* Wire the standard machine plus the config's extras, with [disk_path] as the SPI
-   disk. Shared by the windowed and headless paths. Port of build_machine. *)
-let build_machine (cfg : Cli.config) disk_path clipboard_host =
-  let risc = RC.Headless.standard_machine ?disk:disk_path clipboard_host in
-  if cfg.configure then Core.configure_memory risc cfg.mem cfg.width cfg.height;
+(* Wire the standard machine plus the config's extras, with [disk] as the SPI disk.
+   Shared by the windowed and headless paths. Port of build_machine. *)
+let build_machine (cfg : Cli.config) disk clipboard_host =
+  let risc = RC.Headless.standard_machine ~disk clipboard_host in
+  if cfg.configure
+  then Core.configure_memory risc ~megabytes:cfg.mem ~width:cfg.width ~height:cfg.height;
   if cfg.boot_from_serial then Core.set_switches risc 1;
   if cfg.leds then Core.set_leds risc led_logger;
   (* --serial-in/--serial-out replace PCLink with a raw host serial line. *)
@@ -40,10 +41,8 @@ let build_machine (cfg : Cli.config) disk_path clipboard_host =
   risc
 ;;
 
-let copy_file src dst =
-  Out_channel.with_open_bin dst (fun oc ->
-    output_string oc (In_channel.with_open_bin src In_channel.input_all))
-;;
+(* The disk image in place — the guest's writes reach the file, as on the board. *)
+let disk_in_place (cfg : Cli.config) = RC.Disk.create cfg.disk_image
 
 (* Map a key event to a frontend action, mirroring sdl-main.c's key_map. A held key
    repeats its key-down: Oberon wants those (typematic input), but a frontend
@@ -71,13 +70,14 @@ let map_action ~repeat ~down ~keycode ~kmod =
   else `Oberon_input
 ;;
 
-(* Run without a window. With --frames it's a deterministic experiment (boot a
-   throwaway copy for N synthetic-clock frames, print FNV-1a hashes). Without, a
-   headless session paced by wall time until killed. Port of run_headless. *)
+(* Run without a window. With --frames it's a deterministic experiment (boot the image
+   in memory for N synthetic-clock frames, print FNV-1a hashes; the file is left as it
+   was). Without, a headless session paced by wall time until killed, on the image in
+   place. Port of run_headless. *)
 let run_headless (cfg : Cli.config) =
   match cfg.frames with
   | None ->
-    let risc = build_machine cfg cfg.disk_image RC.Clipboard.noop_host in
+    let risc = build_machine cfg (disk_in_place cfg) RC.Clipboard.noop_host in
     let period = 1.0 /. float_of_int fps in
     let start = Unix.gettimeofday () in
     let rec loop next =
@@ -93,49 +93,38 @@ let run_headless (cfg : Cli.config) =
     in
     loop start
   | Some frames ->
-    (* Boot writes to the disk, so run against a throwaway copy — made inside the
-       protected region, so a copy that fails (a missing or unreadable image) still
-       removes the temp file. *)
-    let scratch =
-      Option.map (fun _ -> Filename.temp_file "oberon_headless_" ".dsk") cfg.disk_image
+    (* Boot writes to the disk, so boot the image in memory: the file stays as it was. *)
+    let disk =
+      match cfg.disk_image with
+      | Some path ->
+        RC.Disk.of_string (In_channel.with_open_bin path In_channel.input_all)
+      | None -> RC.Disk.create None
     in
-    Fun.protect
-      ~finally:(fun () ->
-        match scratch with
-        | Some t ->
-          (try Sys.remove t with
-           | Sys_error _ -> ())
-        | None -> ())
-      (fun () ->
-         (match cfg.disk_image, scratch with
-          | Some src, Some tmp -> copy_file src tmp
-          | _ -> ());
-         let risc = build_machine cfg scratch RC.Clipboard.noop_host in
-         (* cfg.shot_frames is ascending and deduped, so one head comparison per
+    let risc = build_machine cfg disk RC.Clipboard.noop_host in
+    (* cfg.shot_frames is ascending and deduped, so one head comparison per
             frame suffices; capture is a pure read, leaving the hashes intact. *)
-         let shots = ref cfg.shot_frames in
-         let on_frame f =
-           match !shots with
-           | n :: rest when n = f ->
-             shots := rest;
-             Printf.printf "screenshot: %s\n" (Screenshot.save risc)
-           | _ -> ()
-         in
-         RC.Headless.run_frames risc frames ~on_frame;
-         let words = Core.fb_width risc * Core.fb_height risc in
-         let rec count_blank i n =
-           if i = words
-           then n
-           else
-             count_blank (i + 1) (if Core.framebuffer_word risc i = 0 then n + 1 else n)
-         in
-         Printf.printf
-           "frames=%d framebuffer_fnv1a=0x%016Lx state_fnv1a=0x%016Lx blank_words=%d/%d\n"
-           frames
-           (RC.Headless.framebuffer_hash risc)
-           (RC.Headless.state_hash risc)
-           (count_blank 0 0)
-           words)
+    let shots = ref cfg.shot_frames in
+    let on_frame f =
+      match !shots with
+      | n :: rest when n = f ->
+        shots := rest;
+        Printf.printf "screenshot: %s\n" (Screenshot.save risc)
+      | _ -> ()
+    in
+    RC.Headless.run_frames risc frames ~on_frame;
+    let words = Core.fb_width risc * Core.fb_height risc in
+    let rec count_blank i n =
+      if i = words
+      then n
+      else count_blank (i + 1) (if Core.framebuffer_word risc i = 0 then n + 1 else n)
+    in
+    Printf.printf
+      "frames=%d framebuffer_fnv1a=0x%016Lx state_fnv1a=0x%016Lx blank_words=%d/%d\n"
+      frames
+      (RC.Headless.framebuffer_hash risc)
+      (RC.Headless.state_hash risc)
+      (count_blank 0 0)
+      words
 ;;
 
 let fail_with m =
@@ -144,7 +133,7 @@ let fail_with m =
 ;;
 
 let run_gui (cfg : Cli.config) =
-  let risc = build_machine cfg cfg.disk_image Sdl_clipboard.host in
+  let risc = build_machine cfg (disk_in_place cfg) Sdl_clipboard.host in
   (match Sdl.init Sdl.Init.video with
    | Ok () -> ()
    | Error (`Msg m) -> fail_with ("unable to initialize SDL: " ^ m));
@@ -263,4 +252,14 @@ let run_gui (cfg : Cli.config) =
   done
 ;;
 
-let run (cfg : Cli.config) = if cfg.headless then run_headless cfg else run_gui cfg
+(* Reading a directory fails with a bare "Is a directory" that names nothing. *)
+let check_disk_image = function
+  | Some path when Sys.file_exists path && Sys.is_directory path ->
+    failwith (Printf.sprintf "%s: a directory, not a disk image" path)
+  | _ -> ()
+;;
+
+let run (cfg : Cli.config) =
+  check_disk_image cfg.disk_image;
+  if cfg.headless then run_headless cfg else run_gui cfg
+;;

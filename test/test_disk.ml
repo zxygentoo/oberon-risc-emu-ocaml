@@ -42,6 +42,27 @@ let read_file path =
     (fun () -> really_input_string ic (in_channel_length ic))
 ;;
 
+(* One CMD17 through the SPI protocol: the sector's 128 words. *)
+let spi_read (s : Io.spi) sector =
+  send_command s 81 sector;
+  s.spi_write_data 0xFF (* R1 *);
+  s.spi_write_data 0xFF (* data token *);
+  Array.init 128 (fun _ ->
+    s.spi_write_data 0xFF;
+    s.spi_read_data ())
+;;
+
+(* One CMD24: write 128 words to the sector. *)
+let spi_write (s : Io.spi) sector words =
+  send_command s 88 sector;
+  s.spi_write_data 0xFF;
+  s.spi_write_data 254;
+  Array.iter s.spi_write_data words;
+  s.spi_write_data 0xFF;
+  s.spi_write_data 0xFF;
+  s.spi_write_data 0xFF
+;;
+
 (* Open descriptors of this process, where /proc says (Linux); None elsewhere. *)
 let open_fds () =
   if Sys.file_exists "/proc/self/fd"
@@ -122,6 +143,50 @@ let () =
    s.spi_write_data 0xFF;
    eq "closed_reads_zero" (s.spi_read_data ()) 0;
    Sys.remove path);
+  (* An in-memory card behaves exactly as a file-backed one: the same random mix of
+     reads and writes — inside the image, past its end, back over written sectors —
+     reads back identically, and its contents end equal to the file. *)
+  (let image = String.init (512 * 8) (fun i -> Char.chr (i * 7 land 0xFF)) in
+   let path = temp_with (Bytes.of_string image) in
+   let file = Disk.to_spi (Disk.create (Some path)) in
+   let mem_disk = Disk.of_string image in
+   let mem = Disk.to_spi mem_disk in
+   let rng = Random.State.make [| 42 |] in
+   let same = ref true in
+   for _ = 1 to 300 do
+     let sector = Random.State.int rng 12 in
+     if Random.State.bool rng
+     then (
+       let words = Array.init 128 (fun _ -> Random.State.bits rng) in
+       spi_write file sector words;
+       spi_write mem sector words)
+     else if spi_read file sector <> spi_read mem sector
+     then same := false
+   done;
+   check "memory_card_reads_as_file" !same;
+   check "memory_card_contents_as_file" (Disk.contents mem_disk = read_file path);
+   Sys.remove path);
+  (* It leaves the image alone, rebases a filesystem-only image like create, and
+     keeps a far write to one block rather than a buffer up to it. *)
+  (let fs_only = Bytes.make 1024 '\000' in
+   Bytes.blit (sector_bytes [| 0x9B1EA38D |]) 0 fs_only 0 4;
+   let d = Disk.of_string (Bytes.to_string fs_only) in
+   eq "memory_card_rebased" (Disk.For_tests.offset d) 0x8_0002;
+   let image = String.make 1024 'x' in
+   let d = Disk.of_string image in
+   let s = Disk.to_spi d in
+   spi_write s 0 (Array.make 128 0);
+   check "memory_card_image_untouched" (image = String.make 1024 'x');
+   check
+     "memory_card_contents_written"
+     (String.sub (Disk.contents d) 0 4 = "\000\000\000\000");
+   spi_write s 20_000 (Array.make 128 0x01010101);
+   eq "memory_card_grows_to_far_block" (String.length (Disk.contents d)) (20_001 * 512);
+   check
+     "contents_needs_memory_card"
+     (match Disk.contents (Disk.create None) with
+      | _ -> false
+      | exception Invalid_argument _ -> true));
   (* An unmodelled command (CMD0) returns a single status byte. *)
   (let path = temp_with (Bytes.make 512 '\000') in
    let s = Disk.to_spi (Disk.create (Some path)) in

@@ -23,26 +23,20 @@ let goldens =
   ]
 ;;
 
-let copy_to_temp src =
-  let tmp = Filename.temp_file "oberon_boot_" ".dsk" in
-  let ic = open_in_bin src
-  and oc = open_out_bin tmp in
-  output_string oc (really_input_string ic (in_channel_length ic));
-  close_in ic;
-  close_out oc;
-  tmp
+(* Boot writes to the disk, so boot an in-memory card that leaves the image as it was.
+   Devices are wired exactly as the frontend does ({!Headless.standard_machine}), since
+   the goldens were produced with that configuration. *)
+let with_boot_machine f =
+  let disk = Disk.of_string (In_channel.with_open_bin disk_image In_channel.input_all) in
+  f (Headless.standard_machine ~disk Clipboard.noop_host)
 ;;
 
-(* Boot writes to the disk, so run against a throwaway copy. Devices are wired exactly as
-   the frontend does ({!Headless.standard_machine}), since the goldens were produced with
-   that configuration. *)
-let with_boot_machine f =
-  let tmp = copy_to_temp disk_image in
-  Fun.protect
-    ~finally:(fun () ->
-      try Sys.remove tmp with
-      | Sys_error _ -> ())
-    (fun () -> f (Headless.standard_machine ~disk:tmp Clipboard.noop_host))
+(* fnv1a_words over the framebuffer's words is framebuffer_hash. *)
+let fnv1a_words_matches risc =
+  let words =
+    Array.init (Risc.fb_width risc * Risc.fb_height risc) (Risc.framebuffer_word risc)
+  in
+  Headless.fnv1a_words words = Headless.framebuffer_hash risc
 ;;
 
 let check_hashes frames risc (want_fb, want_state) =
@@ -78,7 +72,8 @@ let () =
    | (f, want_fb, want_state) :: _ ->
      with_boot_machine (fun risc ->
        Headless.run_frames risc f;
-       check_hashes f risc (want_fb, want_state))
+       check_hashes f risc (want_fb, want_state);
+       check "fnv1a_words_is_framebuffer_hash" (fnv1a_words_matches risc))
    | [] -> ());
   summary "boot golden checks"
 ;;

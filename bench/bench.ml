@@ -15,28 +15,13 @@ let time_it f =
   Unix.gettimeofday () -. t0, r
 ;;
 
-let copy_to_temp src =
-  let tmp = Filename.temp_file "oberon_bench_" ".dsk" in
-  let ic = open_in_bin src
-  and oc = open_out_bin tmp in
-  output_string oc (really_input_string ic (in_channel_length ic));
-  close_in ic;
-  close_out oc;
-  tmp
-;;
-
 (* One boot of the bundled image for [frames] synthetic-clock frames (a realistic
    mix of CPU, the SD-card disk protocol, MMIO, and framebuffer writes); returns
    the elapsed seconds. *)
 let boot_once disk frames =
-  let tmp = copy_to_temp disk in
-  Fun.protect
-    ~finally:(fun () ->
-      try Sys.remove tmp with
-      | Sys_error _ -> ())
-    (fun () ->
-       let risc = Headless.standard_machine ~disk:tmp Clipboard.noop_host in
-       fst (time_it (fun () -> Headless.run_frames risc frames)))
+  let disk = Disk.of_string (In_channel.with_open_bin disk In_channel.input_all) in
+  let risc = Headless.standard_machine ~disk Clipboard.noop_host in
+  fst (time_it (fun () -> Headless.run_frames risc frames))
 ;;
 
 let bench_boot disk frames =

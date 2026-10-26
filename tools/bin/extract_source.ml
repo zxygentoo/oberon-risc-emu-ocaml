@@ -50,7 +50,5 @@ let () =
         output
         (Packonly.StringSet.cardinal stats.packonly)
         tail)
-  | _ ->
-    Printf.eprintf "%s\n" usage;
-    exit 2
+  | _ -> Tool_cli.usage_error ~name ~usage "expected DISK_IMAGE and OUTPUT_DIR"
 ;;

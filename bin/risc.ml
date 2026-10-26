@@ -3,6 +3,7 @@
     library ({!App}, {!Cli}, {!Ps2}, {!Render}); the pure machine — CPU, software FP,
     MMIO, disk, serial, clipboard bridge — lives in {!Risc_core}. *)
 
+(* Exit codes as the host tools: 1 when the run fails, 2 for a usage error. *)
 let fail_with m =
   Printf.eprintf "risc: %s\n%!" m;
   exit 1
@@ -13,10 +14,15 @@ let () =
   | Cli.Help ->
     print_string Cli.usage;
     exit 0
-  | Cli.Invalid msg -> fail_with msg
+  | Cli.Version ->
+    Printf.printf "risc %s\n" Risc_core.Version.version;
+    exit 0
+  | Cli.Invalid msg ->
+    Printf.eprintf "risc: %s\nTry 'risc --help'.\n%!" msg;
+    exit 2
   | Cli.Config cfg ->
     (try App.run cfg with
-     | Sys_error m -> fail_with m
+     | Sys_error m | Failure m -> fail_with m
      | Unix.Unix_error (e, f, a) ->
        fail_with (Printf.sprintf "%s (%s %s)" (Unix.error_message e) f a))
 ;;

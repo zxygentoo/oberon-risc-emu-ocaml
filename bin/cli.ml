@@ -19,7 +19,9 @@ let usage =
   \  --frames N            Run N deterministic frames, print FNV-1a hashes, then exit \
    (headless only)\n\
   \  --shot-frames N,N,..  Save the framebuffer as risc-shotNNNN.png after each listed \
-   frame (with --frames)\n\n\
+   frame (with --frames)\n\
+  \  -h, --help            Print this help\n\
+  \  --version             Print the version\n\n\
    Without --mem/--size the machine is the reference FPGA system with 16 MiB of RAM:\n\
    1024x768, the framebuffer at 1 MB, RAM above it for software that knows. Either\n\
    option switches to the C emulator's configurable layout instead: MEGS of RAM\n\
@@ -30,6 +32,7 @@ let usage =
 type parsed =
   | Config of config
   | Help
+  | Version
   | Invalid of string
 
 (** Validated configuration handed to the frontend. *)
@@ -78,14 +81,25 @@ let parse_shot_frames s =
   else Error (Printf.sprintf "invalid --shot-frames %S, expected FRAME,FRAME,..." s)
 ;;
 
-(* Split [--opt=value] into [--opt; value] so the parser only handles [--opt value]. *)
+let value_options =
+  [ "--zoom"
+  ; "--mem"
+  ; "--size"
+  ; "--serial-in"
+  ; "--serial-out"
+  ; "--frames"
+  ; "--shot-frames"
+  ]
+;;
+
+(* Split [--opt=value] into [--opt; value] so the parser only handles [--opt value] —
+   for the options that take a value. On a flag ([--headless=1]) the token stays whole,
+   and the parser refuses it rather than taking "1" for the disk image. *)
 let split_eq arg =
-  if String.starts_with ~prefix:"--" arg
-  then (
-    match String.index_opt arg '=' with
-    | Some i -> [ String.sub arg 0 i; String.sub arg (i + 1) (String.length arg - i - 1) ]
-    | None -> [ arg ])
-  else [ arg ]
+  match String.index_opt arg '=' with
+  | Some i when List.mem (String.sub arg 0 i) value_options ->
+    [ String.sub arg 0 i; String.sub arg (i + 1) (String.length arg - i - 1) ]
+  | _ -> [ arg ]
 ;;
 
 (* Parse a raw argument list (the argv tail), so it is testable without Sys.argv. *)
@@ -103,6 +117,7 @@ let parse_argv raw_args =
   and shot_frames = ref []
   and disk = ref None
   and help = ref false
+  and version = ref false
   and err = ref None in
   let fail msg = if !err = None then err := Some msg in
   let rec loop = function
@@ -110,14 +125,13 @@ let parse_argv raw_args =
     | _ when !err <> None -> ()
     | "--zoom" :: v :: rest ->
       (match float_of_string_opt v with
-       | Some x when x > 0.0 -> zoom := x
-       | Some _ -> zoom := 0.0
-       | None -> fail (Printf.sprintf "invalid --zoom %S" v));
+       | Some x when Float.is_finite x && x > 0.0 -> zoom := x
+       | _ -> fail (Printf.sprintf "invalid --zoom %S (expected a positive scale)" v));
       loop rest
     | "--mem" :: v :: rest ->
       (match int_of_string_opt v with
-       | Some m -> mem := m
-       | None -> fail (Printf.sprintf "invalid --mem %S" v));
+       | Some m when m >= 1 && m <= 32 -> mem := m
+       | _ -> fail (Printf.sprintf "invalid --mem %S (expected 1..32 megabytes)" v));
       loop rest
     | "--size" :: v :: rest ->
       size := Some v;
@@ -130,8 +144,8 @@ let parse_argv raw_args =
       loop rest
     | "--frames" :: v :: rest ->
       (match int_of_string_opt v with
-       | Some n -> frames := Some n
-       | None -> fail (Printf.sprintf "invalid --frames %S" v));
+       | Some n when n >= 1 -> frames := Some n
+       | _ -> fail (Printf.sprintf "invalid --frames %S (expected a count, at least 1)" v));
       loop rest
     | "--shot-frames" :: v :: rest ->
       (match parse_shot_frames v with
@@ -151,6 +165,7 @@ let parse_argv raw_args =
       headless := true;
       loop rest
     | ("--help" | "-h") :: _ -> help := true
+    | "--version" :: _ -> version := true
     | (( "--zoom"
        | "--mem"
        | "--size"
@@ -159,15 +174,23 @@ let parse_argv raw_args =
        | "--frames"
        | "--shot-frames" ) as o)
       :: [] -> fail (Printf.sprintf "option %s requires a value" o)
+    | opt :: _ when String.starts_with ~prefix:"--" opt && String.contains opt '=' ->
+      fail
+        (Printf.sprintf
+           "option %s takes no value"
+           (String.sub opt 0 (String.index opt '=')))
     | opt :: _ when String.starts_with ~prefix:"-" opt ->
       fail (Printf.sprintf "unknown option %s" opt)
     | file :: rest ->
-      disk := Some file;
+      (match !disk with
+       | None -> disk := Some file
+       | Some first ->
+         fail (Printf.sprintf "one DISK-IMAGE only (got %s and %s)" first file));
       loop rest
   in
   loop (List.concat_map split_eq raw_args);
-  let width = ref Risc_core.Risc.framebuffer_width in
-  let height = ref Risc_core.Risc.framebuffer_height in
+  let width = ref Risc_core.Risc.default_screen_width in
+  let height = ref Risc_core.Risc.default_screen_height in
   (match !size with
    | Some s ->
      (match parse_size s with
@@ -179,15 +202,14 @@ let parse_argv raw_args =
    | None -> ());
   if !help
   then Help
+  else if !version
+  then Version
   else (
     match !err with
     | Some e -> Invalid e
     | None ->
       if !disk = None && not !boot_from_serial
-      then
-        Invalid
-          "a DISK-IMAGE is required (or pass --boot-from-serial).\n\
-           For more information, try '--help'."
+      then Invalid "a DISK-IMAGE is required (or pass --boot-from-serial)"
       else if !frames <> None && not !headless
       then Invalid "--frames requires --headless"
       else if !shot_frames <> [] && !frames = None

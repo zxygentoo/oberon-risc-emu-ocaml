@@ -6,8 +6,8 @@ open Test_harness
 let ok args =
   match Cli.parse_argv args with
   | Cli.Config c -> c
-  | Cli.Help ->
-    failwith (Printf.sprintf "unexpected help for %s" (String.concat " " args))
+  | Cli.Help | Cli.Version ->
+    failwith (Printf.sprintf "unexpected help/version for %s" (String.concat " " args))
   | Cli.Invalid e ->
     failwith (Printf.sprintf "unexpected error for %s: %s" (String.concat " " args) e)
 ;;
@@ -15,7 +15,7 @@ let ok args =
 let is_err args =
   match Cli.parse_argv args with
   | Cli.Invalid _ -> true
-  | Cli.Config _ | Cli.Help -> false
+  | Cli.Config _ | Cli.Help | Cli.Version -> false
 ;;
 
 let () =
@@ -75,10 +75,26 @@ let () =
   check "help" (Cli.parse_argv [ "--help" ] = Cli.Help);
   check "help_short" (Cli.parse_argv [ "-h" ] = Cli.Help);
   check "err_before_help" (is_err [ "--bogus"; "--help" ]);
-  (* --zoom: an unparsable value errors; a non-positive one folds to 0 (auto). *)
+  check "version" (Cli.parse_argv [ "--version" ] = Cli.Version);
+  (* --zoom takes a finite positive scale; anything else is an error (the C folded a
+     non-positive one to auto, and inf made an unusable window). *)
   check "zoom_invalid" (is_err [ "--zoom"; "abc"; "d.dsk" ]);
-  check "zoom_nonpositive_auto" ((ok [ "--zoom"; "-1"; "d.dsk" ]).Cli.zoom = 0.0);
+  check "zoom_nonpositive" (is_err [ "--zoom"; "-1"; "d.dsk" ]);
+  check "zoom_zero" (is_err [ "--zoom"; "0"; "d.dsk" ]);
+  check "zoom_inf" (is_err [ "--zoom"; "inf"; "d.dsk" ]);
+  check "zoom_nan" (is_err [ "--zoom"; "nan"; "d.dsk" ]);
   check "zoom_value" ((ok [ "--zoom"; "1.5"; "d.dsk" ]).Cli.zoom = 1.5);
+  (* --frames counts frames; --mem is 1..32 MB (the range configure_memory honours). *)
+  check "frames_negative" (is_err [ "--headless"; "--frames"; "-3"; "d.dsk" ]);
+  check "frames_zero" (is_err [ "--headless"; "--frames"; "0"; "d.dsk" ]);
+  check "mem_zero" (is_err [ "--mem"; "0"; "d.dsk" ]);
+  check "mem_too_big" (is_err [ "--mem"; "64"; "d.dsk" ]);
+  check "mem_bounds" ((ok [ "--mem"; "32"; "d.dsk" ]).Cli.mem = 32);
+  (* One disk image: a second positional used to replace the first silently. *)
+  check "two_disks" (is_err [ "a.dsk"; "b.dsk" ]);
+  (* A flag given a value is refused, not split into the flag plus a disk image. *)
+  check "flag_with_value" (is_err [ "--headless=1"; "d.dsk" ]);
+  check "flag_with_value_alone" (is_err [ "--headless=yes" ]);
   (* A value-taking option at the end of argv is an error. *)
   check "missing_value" (is_err [ "d.dsk"; "--mem" ]);
   (* Pass-through flags land in the config. *)

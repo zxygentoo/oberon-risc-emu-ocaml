@@ -14,12 +14,8 @@
     Words are stored as native [int]s in [u32] range; see {!U32} for the exact 32-bit
     arithmetic this relies on. *)
 
-(** Standard framebuffer width in pixels (overridable via {!configure_memory}). *)
-let framebuffer_width = 1024
-
-(** Standard framebuffer height in pixels. *)
-let framebuffer_height = 768
-
+let default_screen_width = 1024
+let default_screen_height = 768
 let default_mem_size = 0x0100_0000
 let default_display_start = 0x000E_7F00
 
@@ -38,13 +34,20 @@ let flag_n = 2
 let flag_c = 4
 let flag_v = 8
 
-(** A damaged (dirty) rectangle of the framebuffer, in framebuffer-word columns and line
-    rows. [y1 > y2] means "nothing damaged". *)
 type damage =
-  { mutable x1 : int
-  ; mutable x2 : int
-  ; mutable y1 : int
-  ; mutable y2 : int
+  { x1 : int
+  ; x2 : int
+  ; y1 : int
+  ; y2 : int
+  }
+
+(* The machine's own running damage rectangle; {!framebuffer_damage} hands out an
+   immutable snapshot of it. *)
+type dirty =
+  { mutable dx1 : int
+  ; mutable dx2 : int
+  ; mutable dy1 : int
+  ; mutable dy2 : int
   }
 
 (** A snapshot of the architectural CPU state, for inspection and differential testing
@@ -79,7 +82,7 @@ type t =
   ; mutable shim : Io.shim option (* headless shim host, when in shim mode *)
   ; mutable fb_width : int (* words *)
   ; mutable fb_height : int (* lines *)
-  ; damage : damage
+  ; damage : dirty
   ; mutable ram : int array
   ; rom : int array (* 512 *)
   }
@@ -205,10 +208,10 @@ let update_damage t w =
   and col = w mod t.fb_width in
   if row < t.fb_height
   then (
-    if col < t.damage.x1 then t.damage.x1 <- col;
-    if col > t.damage.x2 then t.damage.x2 <- col;
-    if row < t.damage.y1 then t.damage.y1 <- row;
-    if row > t.damage.y2 then t.damage.y2 <- row)
+    if col < t.damage.dx1 then t.damage.dx1 <- col;
+    if col > t.damage.dx2 then t.damage.dx2 <- col;
+    if row < t.damage.dy1 then t.damage.dy1 <- row;
+    if row > t.damage.dy2 then t.damage.dy2 <- row)
 ;;
 
 let store_word t addr value =
@@ -273,6 +276,7 @@ let single_step t =
        {!Risc5_isa.decode}; on a non-flambda build it costs a few % on the hot path versus
        a raw p/q branch tree — immaterial for the emulator, and free under flambda2. *)
     let open Risc5_isa in
+    let open Word in
     match kind ir with
     | Register ->
       let a = ra ir
@@ -408,8 +412,8 @@ let run t cycles =
 (** Build a machine in the default (FPGA-compatible) configuration and reset it. Port of
     [risc_new]. *)
 let make () =
-  let fb_width = framebuffer_width / 32 in
-  let fb_height = framebuffer_height in
+  let fb_width = default_screen_width / 32 in
+  let fb_height = default_screen_height in
   let t =
     { pc = 0
     ; r = Array.make 16 0
@@ -432,9 +436,9 @@ let make () =
     ; shim = None
     ; fb_width
     ; fb_height
-    ; damage = { x1 = 0; y1 = 0; x2 = fb_width - 1; y2 = fb_height - 1 }
+    ; damage = { dx1 = 0; dy1 = 0; dx2 = fb_width - 1; dy2 = fb_height - 1 }
     ; ram = Array.make (default_mem_size / 4) 0
-    ; rom = Array.copy Boot_rom.bootloader
+    ; rom = Boot_rom.bootloader ()
     }
   in
   reset t;
@@ -446,20 +450,20 @@ let clamp lo hi v = if v < lo then lo else if v > hi then hi else v
 (** Resize RAM and the framebuffer, patching the boot ROM accordingly. Port of
     [risc_configure_memory]. RAM clamps to 1..32 MB, the screen to 32..4096 on each axis
     with the width rounded down to whole 32-pixel words. *)
-let configure_memory t megabytes_ram screen_width screen_height =
-  let megs = clamp 1 32 megabytes_ram in
-  let screen_width = clamp 32 4096 screen_width land lnot 31 in
-  let screen_height = clamp 32 4096 screen_height in
+let configure_memory t ~megabytes ~width ~height =
+  let megs = clamp 1 32 megabytes in
+  let screen_width = clamp 32 4096 width land lnot 31 in
+  let screen_height = clamp 32 4096 height in
   t.display_start <- megs lsl 20;
   t.mem_size <- t.display_start + (screen_width * screen_height / 8);
   (* In this configuration the framebuffer is again RAM's top slice. *)
   t.display_end <- t.mem_size;
   t.fb_width <- screen_width / 32;
   t.fb_height <- screen_height;
-  t.damage.x1 <- 0;
-  t.damage.y1 <- 0;
-  t.damage.x2 <- t.fb_width - 1;
-  t.damage.y2 <- t.fb_height - 1;
+  t.damage.dx1 <- 0;
+  t.damage.dy1 <- 0;
+  t.damage.dx2 <- t.fb_width - 1;
+  t.damage.dy2 <- t.fb_height - 1;
   t.ram <- Array.make (t.mem_size / 4) 0;
   (* Patch the new constants into the bootloader. *)
   let mem_lim = t.display_start - 16 in
@@ -482,8 +486,13 @@ let configure_memory t megabytes_ram screen_width screen_height =
 let set_leds t leds = t.leds <- Some leds
 let set_serial t serial = t.serial <- Some serial
 
-(** Attach an SPI slave at index 1 or 2 (others ignored). Port of [risc_set_spi]. *)
-let set_spi t index spi = if index = 1 || index = 2 then t.spi.(index) <- Some spi
+(** Attach an SPI slave at index 1 or 2. Port of [risc_set_spi], which ignores any other
+    index; here it is a caller's bug, so it raises. *)
+let set_spi t index spi =
+  if index = 1 || index = 2
+  then t.spi.(index) <- Some spi
+  else invalid_arg (Printf.sprintf "Risc.set_spi: index %d (the slots are 1 and 2)" index)
+;;
 
 let set_clipboard t clipboard = t.clipboard <- Some clipboard
 let set_switches t switches = t.switches <- switches
@@ -526,11 +535,13 @@ let framebuffer_word t i = t.ram.((t.display_start / 4) + i)
 (** Take the accumulated damage rectangle and reset it to empty. Port of
     [risc_get_framebuffer_damage]. *)
 let framebuffer_damage t =
-  let d = { x1 = t.damage.x1; x2 = t.damage.x2; y1 = t.damage.y1; y2 = t.damage.y2 } in
-  t.damage.x1 <- t.fb_width;
-  t.damage.x2 <- 0;
-  t.damage.y1 <- t.fb_height;
-  t.damage.y2 <- 0;
+  let d =
+    { x1 = t.damage.dx1; x2 = t.damage.dx2; y1 = t.damage.dy1; y2 = t.damage.dy2 }
+  in
+  t.damage.dx1 <- t.fb_width;
+  t.damage.dx2 <- 0;
+  t.damage.dy1 <- t.fb_height;
+  t.damage.dy2 <- 0;
   d
 ;;
 
@@ -668,22 +679,32 @@ module For_shim = struct
   ;;
 end
 
-(* White-box access for the test suite; see the interface. *)
-module For_tests = struct
-  let io_start = io_start
+(* Stepping and architectural state; see the interface. *)
+module Cpu = struct
   let single_step = single_step
-  let load_io = load_io
-  let store_io = store_io
-  let load_byte = load_byte
-  let store_byte = store_byte
-  let ram t = t.ram
-  let regs t = t.r
   let pc t = t.pc
   let set_pc t v = t.pc <- v
+  let regs t = t.r
   let h t = t.h
   let set_h t v = t.h <- v
   let flags t = t.flags
   let set_flags t v = t.flags <- v
+  let flag_z = flag_z
+  let flag_n = flag_n
+  let flag_c = flag_c
+  let flag_v = flag_v
+  let ram t = t.ram
+end
+
+(* White-box access for the test suite; see the interface. *)
+module For_tests = struct
+  include Cpu
+
+  let io_start = io_start
+  let load_io = load_io
+  let store_io = store_io
+  let load_byte = load_byte
+  let store_byte = store_byte
   let progress t = t.progress
   let set_progress t v = t.progress <- v
 end

@@ -53,7 +53,7 @@ Ported from the C frontend, plus `--headless`/`--frames` from the Rust port:
 | `--boot-from-serial` | Boot from the serial line (no disk image required) |
 | `--serial-in FILE` / `--serial-out FILE` | Use a raw host serial line instead of PCLink |
 | `--headless` | Run without a window (until killed, or `--frames` frames) |
-| `--frames N` | Run N deterministic frames, print FNV-1a hashes, then exit (headless only) |
+| `--frames N` | Run N deterministic frames, print FNV-1a hashes, then exit (headless only; the image is booted in memory and left unchanged) |
 | `--shot-frames N,N,..` | Save the framebuffer as `risc-shotNNNN.png` after each listed frame (with `--frames`) |
 
 Without `--mem`/`--size` the machine is the reference FPGA system with 16 MiB of
@@ -97,6 +97,11 @@ the Oberon compiler headless through a port of project-norebo's shim runtime,
 with the bootstrap toolchain embedded in the binary. Both directions are
 verified byte-identical against the Rust tools: extracted trees compare equal,
 and built images hash identically.
+
+Every executable — `risc` and the five tools — takes `-h`/`--help` and
+`--version`, and exits 0 on success, 1 when the work itself fails (an
+unreadable file, a broken image, a failed build), and 2 for a usage error (an
+unknown option, missing or extra arguments).
 
 ## Driving a live system (oat)
 

@@ -3,8 +3,8 @@
     Transcribed verbatim from the C reference [src/risc-boot.inc] -- the same
     512-word PROM image the FPGA loads. Only the 383 words of the PROM image
     proper are listed below; [bootloader] zero-fills the remaining 129 words,
-    matching the C array. Each [Risc] copies this image into its own ROM at
-    construction, so per-instance patching ([configure_memory]) is isolated. *)
+    matching the C array. Each [Risc] takes its own copy at construction, so
+    per-instance patching ([configure_memory]) is isolated. *)
 
 let image =
   [| 0xE7000151
@@ -393,9 +393,11 @@ let image =
   |]
 ;;
 
+(* A fresh array per call: a shared one would let any caller's write change the ROM of
+   every machine made after it. *)
 (** The bootloader image: 512 little-endian words mapped into ROM at the top of
     the address space, the 383-word PROM image zero-filled to 512. *)
-let bootloader =
+let bootloader () =
   let rom = Array.make 512 0 in
   Array.blit image 0 rom 0 (Array.length image);
   rom

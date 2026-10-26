@@ -1,5 +1,5 @@
 (* Tool_cli argv-walker tests — the in-process paths. The -h/--version/unknown-option
-   arms print and exit by design; they are exercised only end-to-end. *)
+   arms print and exit by design; test_cli_contract runs them end-to-end. *)
 
 open Oberon_tools
 open Test_harness
@@ -18,6 +18,6 @@ let () =
   check "lone_dash_positional" (parse [ "-" ] = [ "-" ]);
   (* run_reporting passes through f's value on success. *)
   eq "run_reporting_value" (Tool_cli.run_reporting ~name:"t" (fun () -> 42)) 42;
-  check "version_nonempty" (Tool_cli.version <> "");
+  check "version_nonempty" (Risc_core.Version.version <> "");
   summary "tool_cli checks"
 ;;
