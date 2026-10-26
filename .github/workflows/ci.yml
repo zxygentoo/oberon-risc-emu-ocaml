@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  # Everything, on the OCaml floor (5.1) and a current release.
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        ocaml-compiler: ["5.1", "5.3"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: ${{ matrix.ocaml-compiler }}
+      - run: opam install . --deps-only --with-test
+      - run: opam exec -- dune build
+      - run: opam exec -- dune test
+      - name: Differential lockstep against the C reference
+        run: opam exec -- dune build @cosim
+      - name: Image-builder round trip
+        run: OBERON_ROUNDTRIP=1 opam exec -- dune build @test/runtest --force
+
+  # The core package alone, as opam builds it, with no SDL anywhere: what a
+  # consumer of the library gets.
+  core-without-sdl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.3"
+      - run: opam install ./oberon-risc.opam --deps-only --with-test
+      - run: opam exec -- dune build -p oberon-risc @install @runtest
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.3"
+      - run: opam install ocamlformat.0.29.0
+      - run: opam exec -- dune build @fmt
