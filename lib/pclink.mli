@@ -2,7 +2,9 @@
 
     Watches for two job files: [PCLink.REC] names a host file to send to Oberon,
     and [PCLink.SND] names a host file to receive from Oberon. It then drives the
-    framed byte protocol the Oberon PCLink tool speaks. *)
+    framed byte protocol the Oberon PCLink tool speaks. Each transfer it starts is
+    noted on stderr ([PCLink REC/SND Filename: ...]); the C prints these to stdout,
+    which here would mix them into output callers parse ([risc --frames]). *)
 
 (** A PCLink serial device watching a directory for job files. *)
 type t

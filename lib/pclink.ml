@@ -119,7 +119,7 @@ let read_status t =
              t.flen <- sz;
              t.mode <- rec_mode;
              t.file <- Some (Rec ic);
-             Printf.printf "PCLink REC Filename: %s size %d\n%!" t.filename t.flen
+             Printf.eprintf "PCLink REC Filename: %s size %d\n%!" t.filename t.flen
            with
            | Sys_error _ -> ())
        with
@@ -133,7 +133,7 @@ let read_status t =
          t.flen <- -1;
          t.mode <- snd_mode;
          t.file <- Some (Snd oc);
-         Printf.printf "PCLink SND Filename: %s\n%!" t.filename
+         Printf.eprintf "PCLink SND Filename: %s\n%!" t.filename
        with
        | Sys_error _ -> ());
       if t.mode = 0 then try_remove (snd_name t));
