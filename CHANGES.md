@@ -1,6 +1,6 @@
 # Changes
 
-## 1.0.0 (unreleased)
+## 1.0.0 (2026-10-26)
 
 The first stable release: the emulator core and the host tools take on the
 compatibility promise in the README's [Stability](README.md#stability) section. Changes
