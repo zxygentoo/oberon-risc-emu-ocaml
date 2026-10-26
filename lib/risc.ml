@@ -145,11 +145,15 @@ let load_io_device t address =
 
 (* Shim mode routes the whole MMIO region to the host backend; otherwise the FPGA device
    map above. A load never reaches into guest memory — only a store can, via a syscall
-   (see [store_io]). *)
+   (see [store_io]). Every device value enters the machine here, so this is where it is
+   held to u32: the clock and switches come from host setters, the rest from device
+   callbacks, and a register must never see more than 32 bits (a [set_time] past 2^32
+   would otherwise load as a non-zero word that clears Z). *)
 let load_io t address =
-  match t.shim with
-  | Some s -> s.Io.shim_load (U32.sub address io_start)
-  | None -> load_io_device t address
+  U32.wrap
+    (match t.shim with
+     | Some s -> s.Io.shim_load (U32.sub address io_start)
+     | None -> load_io_device t address)
 ;;
 
 let store_io_device t address value =

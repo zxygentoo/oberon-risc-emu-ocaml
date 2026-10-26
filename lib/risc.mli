@@ -70,7 +70,8 @@ val set_switches : t -> int -> unit
 
 (** {2 Input, time, framebuffer} *)
 
-(** Set the synthetic millisecond clock. Port of [risc_set_time]. *)
+(** Set the synthetic millisecond clock. Port of [risc_set_time]. The guest reads it
+    modulo 2^32, as it reads every device value. *)
 val set_time : t -> int -> unit
 
 (** Report a mouse move (coordinates in the Oberon frame). Port of [risc_mouse_moved]. *)
