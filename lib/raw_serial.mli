@@ -13,3 +13,7 @@ val create : string -> string -> t
 
 (** The {!Io.serial} view of this raw line (closures over its fds). *)
 val to_serial : t -> Io.serial
+
+(** Release both files. Idempotent; from then on the line is idle (nothing to
+    read, writes dropped), so a machine still holding it keeps running. *)
+val close : t -> unit

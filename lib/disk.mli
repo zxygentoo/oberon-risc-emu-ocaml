@@ -15,6 +15,11 @@ val create : string option -> t
 (** The {!Io.spi} view of this disk (closures over its mutable state). *)
 val to_spi : t -> Io.spi
 
+(** Release the host file. Idempotent; from then on the card behaves as diskless
+    (reads return zeros, writes are dropped), so a machine still holding it keeps
+    running. Without it the file stays open until the process exits. *)
+val close : t -> unit
+
 (** Test-only access. *)
 module For_tests : sig
   (** The sector rebasing offset (0, or [0x80002] for a filesystem-only image). *)
