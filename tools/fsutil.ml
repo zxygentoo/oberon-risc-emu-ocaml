@@ -20,12 +20,13 @@ let rec mkdir_p dir =
     | Unix.Unix_error (Unix.EEXIST, _, _) -> ())
 ;;
 
+(* lstat, not Sys.is_directory: a symlink to a directory is removed as a link,
+   never descended into — that would empty whatever it points at. *)
 let rec rm_rf path =
-  if Sys.file_exists path
-  then
-    if Sys.is_directory path
-    then (
-      Array.iter (fun name -> rm_rf (Filename.concat path name)) (Sys.readdir path);
-      Sys.rmdir path)
-    else Sys.remove path
+  match Unix.lstat path with
+  | { Unix.st_kind = Unix.S_DIR; _ } ->
+    Array.iter (fun name -> rm_rf (Filename.concat path name)) (Sys.readdir path);
+    Unix.rmdir path
+  | _ -> Unix.unlink path
+  | exception Unix.Unix_error (Unix.ENOENT, _, _) -> ()
 ;;
