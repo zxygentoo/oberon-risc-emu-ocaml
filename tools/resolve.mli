@@ -5,6 +5,9 @@
     manifest; the manifest is required, so the choice is the source provider's and a data
     file left off it fails loudly rather than being fed to the compiler. *)
 
+(** The largest file an Oberon disk holds: 3 210 912 bytes, on PO and EO alike. *)
+val max_file_bytes : int
+
 (** A source file to compile, paired with the module it declares. Objects are named by the
     module, not the file ([Display.Orig.Mod] emits [Display.rsc]), so both are kept:
     [file] to hand the compiler, [module_] to locate the output. *)
@@ -15,8 +18,10 @@ type candidate =
 
 (** [resolve sources visible] returns the compile candidates in dependency order, given
     [sources]'s already-listed visible (non-dot) file names. Raises [Failure] with a clear
-    message when there is no [.packonly], it names a missing file, a candidate isn't
-    Oberon source, two files declare the same module, or the imports form a cycle. *)
+    message when a file can't go onto an Oberon disk (its name isn't a legal Oberon file
+    name, or it is over {!max_file_bytes}), there is no [.packonly], it names a missing
+    file, a candidate isn't Oberon source, two files declare the same module, or the
+    imports form a cycle. *)
 val resolve : string -> string list -> candidate list
 
 (** Exposed for the test suite. Both raise [Failure] on malformed input. *)

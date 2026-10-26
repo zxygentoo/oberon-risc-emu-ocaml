@@ -173,7 +173,43 @@ let topo_sort nodes =
   order
 ;;
 
+(* The largest file Oberon's file system holds (PO and EO alike): the header's 64
+   direct sector slots plus 12 extension index sectors of 256 slots each, 1 KiB a
+   sector, less the 352-byte header in the first. *)
+let max_file_bytes = ((64 + (12 * 256)) * 1024) - 352
+
+(* Every visible file lands on the disk under its own name, so each must be one the
+   disk can hold — or the install stage, an Oberon command scanning `name=>name`
+   pairs, stops at the first bad one and silently drops every file after it,
+   objects included: an unbootable image from a build that reports success. *)
+let check_installable sources visible =
+  let bad_names =
+    List.filter (fun n -> not (Risc_core.Oberon_name.file_name_ok n)) visible
+  in
+  if bad_names <> []
+  then
+    failwith
+      (Printf.sprintf
+         "not valid Oberon file names (a letter, then letters, digits or dots; at most \
+          %d bytes): %s"
+         Risc_core.Oberon_name.max_length
+         (String.concat ", " bad_names));
+  List.iter
+    (fun name ->
+       let size = (Unix.stat (Filename.concat sources name)).Unix.st_size in
+       if size > max_file_bytes
+       then
+         failwith
+           (Printf.sprintf
+              "%s is %d bytes, over the %d an Oberon file can hold"
+              name
+              size
+              max_file_bytes))
+    visible
+;;
+
 let resolve sources visible =
+  check_installable sources visible;
   let manifest = Filename.concat sources Packonly.file_name in
   let text =
     match Fsutil.read_file_opt manifest with
