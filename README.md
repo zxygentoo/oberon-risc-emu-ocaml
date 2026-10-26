@@ -98,6 +98,11 @@ with the bootstrap toolchain embedded in the binary. Both directions are
 verified byte-identical against the Rust tools: extracted trees compare equal,
 and built images hash identically.
 
+Every executable — `risc` and the five tools — takes `-h`/`--help` and
+`--version`, and exits 0 on success, 1 when the work itself fails (an
+unreadable file, a broken image, a failed build), and 2 for a usage error (an
+unknown option, missing or extra arguments).
+
 ## Driving a live system (oat)
 
 `oat` — ported from [oberon-agent][oa] — drives a *running* Oberon over the

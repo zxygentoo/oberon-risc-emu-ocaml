@@ -60,6 +60,20 @@
   test_fsutil)
  (libraries oberon_tools test_harness))
 
+; The executables' command-line contract (--help, --version, exit codes 0/1/2), run
+; end to end against the built binaries.
+
+(test
+ (name test_cli_contract)
+ (libraries risc_core unix test_harness)
+ (deps
+  ../bin/risc.exe
+  ../tools/bin/ob2txt.exe
+  ../tools/bin/txt2ob.exe
+  ../tools/bin/extract_source.exe
+  ../tools/bin/build_po_image.exe
+  ../tools/bin/build_eo_image.exe))
+
 ; oat tests (the serial client for AgentTool.Mod): the wire codec + retry
 ; policy + full exchanges over host pipes (io), the byte channel over host
 ; pipes with forked children playing the device, and Device.open_device's line

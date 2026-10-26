@@ -3,18 +3,20 @@
 
 open Oberon_tools
 
+let name = "ob2txt"
+let usage = "Usage: ob2txt <FILE>   (writes <FILE>.txt)"
+
+let help =
+  "Converts Oberon text (Latin-1, CR line ends) to host text (UTF-8, LF line ends).\n\
+   txt2ob is the inverse."
+;;
+
 let () =
-  match List.tl (Array.to_list Sys.argv) with
-  | [ file ] when file <> "-h" && file <> "--help" ->
-    (try
-       let out = file ^ ".txt" in
-       Fsutil.write_file out (Convert.from_oberon (Fsutil.read_file file));
-       Printf.eprintf "ob2txt: %s -> %s\n" file out
-     with
-     | Sys_error msg ->
-       Printf.eprintf "ob2txt: %s\n" msg;
-       exit 1)
-  | _ ->
-    Printf.eprintf "Usage: ob2txt <FILE>   (writes <FILE>.txt)\n";
-    exit 2
+  match Tool_cli.parse ~name ~usage ~help (List.tl (Array.to_list Sys.argv)) with
+  | [ file ] ->
+    Tool_cli.run_reporting ~name (fun () ->
+      let out = file ^ ".txt" in
+      Fsutil.write_file out (Convert.from_oberon (Fsutil.read_file file));
+      Printf.eprintf "ob2txt: %s -> %s\n" file out)
+  | _ -> Tool_cli.usage_error ~name ~usage "expected one FILE"
 ;;

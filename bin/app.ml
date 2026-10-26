@@ -264,4 +264,14 @@ let run_gui (cfg : Cli.config) =
   done
 ;;
 
-let run (cfg : Cli.config) = if cfg.headless then run_headless cfg else run_gui cfg
+(* Reading a directory fails with a bare "Is a directory" that names nothing. *)
+let check_disk_image = function
+  | Some path when Sys.file_exists path && Sys.is_directory path ->
+    failwith (Printf.sprintf "%s: a directory, not a disk image" path)
+  | _ -> ()
+;;
+
+let run (cfg : Cli.config) =
+  check_disk_image cfg.disk_image;
+  if cfg.headless then run_headless cfg else run_gui cfg
+;;

@@ -18,7 +18,7 @@ let fail_with code msg =
 let () =
   match Cli.parse_argv (List.tl (Array.to_list Sys.argv)) with
   | Cli.Help -> print_string Cli.usage
-  | Cli.Version -> Printf.printf "oat %s\n" Oberon_tools.Tool_cli.version
+  | Cli.Version -> Printf.printf "oat %s\n" Risc_core.Version.version
   | Cli.Invalid msg -> fail_with 2 (msg ^ "\nFor more information, try '--help'.")
   | Cli.Config cfg ->
     (try Cli.run cfg with

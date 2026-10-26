@@ -2,7 +2,10 @@
     Rust port): the argv walker with the common conventions and the tool-level error
     reporter. [run] is the whole main of the two image builders. *)
 
-let version = "0.1.0"
+let usage_error ~name ~usage msg =
+  Printf.eprintf "%s: %s\n%s\nTry '%s --help'.\n" name msg usage name;
+  exit 2
+;;
 
 let parse ~name ~usage ~help ?(flags = []) args =
   let rec go positional = function
@@ -11,14 +14,13 @@ let parse ~name ~usage ~help ?(flags = []) args =
       print_string (usage ^ "\n\n" ^ help ^ "\n");
       exit 0
     | "--version" :: _ ->
-      Printf.printf "%s %s\n" name version;
+      Printf.printf "%s %s\n" name Risc_core.Version.version;
       exit 0
     | arg :: rest when List.mem_assoc arg flags ->
       List.assoc arg flags := true;
       go positional rest
     | arg :: _ when String.length arg > 1 && arg.[0] = '-' ->
-      Printf.eprintf "%s: unknown option '%s'\n%s\n" name arg usage;
-      exit 2
+      usage_error ~name ~usage (Printf.sprintf "unknown option '%s'" arg)
     | arg :: rest -> go (arg :: positional) rest
   in
   go [] args
@@ -44,7 +46,5 @@ let run seed =
     run_reporting ~name (fun () ->
       Pipeline.build seed ~sources ~output;
       Printf.printf "Done: %s\n" output)
-  | _ ->
-    Printf.eprintf "%s\n" usage;
-    exit 2
+  | _ -> usage_error ~name ~usage "expected SOURCES_DIR and OUTPUT"
 ;;

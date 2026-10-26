@@ -6,6 +6,7 @@
 type parsed =
   | Config of config
   | Help
+  | Version
   | Invalid of string
 
 (** Validated configuration handed to the frontend. *)
