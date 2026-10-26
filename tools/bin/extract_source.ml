@@ -12,7 +12,13 @@ let packonly_help =
   \  extract-source also writes `.packonly` into OUTPUT_DIR: a source X.Mod is a\n\
   \  compile candidate when the image carries its X.rsc object; every other\n\
   \  extracted file is recorded as pack-only. One name per line; `#` comments and\n\
-  \  blank lines are ignored; an empty list means the builders compile everything."
+  \  blank lines are ignored; an empty list means the builders compile everything.\n\n\
+   Options:\n\
+  \  --keep-objects  Also write the compiled .rsc/.smb files, for inspection. They\n\
+  \                  are neither source nor pack-only, so a builder refuses the\n\
+  \                  tree; build from one extracted without this flag.\n\n\
+   OUTPUT_DIR is created if missing. Use a new or empty one: files are added and\n\
+   overwritten, never removed, and a builder takes every file in the tree."
 ;;
 
 let () =
