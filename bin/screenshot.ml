@@ -45,7 +45,15 @@ let save risc =
   (* Temp file in the same directory, so the rename is atomic: the shot appearing
      under its final name means it is complete. *)
   let tmp = name ^ ".tmp" in
-  Out_channel.with_open_bin tmp (fun oc -> Out_channel.output_string oc (png_bytes img));
-  Sys.rename tmp name;
+  (try
+     Out_channel.with_open_bin tmp (fun oc ->
+       Out_channel.output_string oc (png_bytes img));
+     Sys.rename tmp name
+   with
+   | e ->
+     (* A half-written shot (a full disk) leaves nothing behind. *)
+     (try Sys.remove tmp with
+      | Sys_error _ -> ());
+     raise e);
   name
 ;;

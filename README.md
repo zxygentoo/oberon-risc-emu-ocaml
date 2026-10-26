@@ -48,13 +48,20 @@ Ported from the C frontend, plus `--headless`/`--frames` from the Rust port:
 | `--zoom REAL` | Scale the display in windowed mode |
 | `--fullscreen` | Start in full-screen mode |
 | `--leds` | Log the LED state to stdout |
-| `--mem MEGS` | Set RAM size (1..32 MB) |
-| `--size WIDTHxHEIGHT` | Set framebuffer size |
+| `--mem MEGS` | Set RAM size (1..32 MB; see below) |
+| `--size WIDTHxHEIGHT` | Set framebuffer size (see below) |
 | `--boot-from-serial` | Boot from the serial line (no disk image required) |
 | `--serial-in FILE` / `--serial-out FILE` | Use a raw host serial line instead of PCLink |
 | `--headless` | Run without a window (until killed, or `--frames` frames) |
 | `--frames N` | Run N deterministic frames, print FNV-1a hashes, then exit (headless only) |
 | `--shot-frames N,N,..` | Save the framebuffer as `risc-shotNNNN.png` after each listed frame (with `--frames`) |
+
+Without `--mem`/`--size` the machine is the reference FPGA system with 16 MiB of
+RAM: 1024×768, the framebuffer at 1 MB, and RAM above it for software that knows
+(the boot ROM advertises 1 MB, so stock images never see it). Either option
+switches to the C emulator's configurable layout instead — `MEGS` of RAM
+(default 1) with the framebuffer right above it — so `--size` alone gives a
+1 MB machine, as in the C.
 
 ### Controls
 

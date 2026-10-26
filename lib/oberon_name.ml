@@ -12,3 +12,10 @@ let name_char_ok i ch =
 let chars_ok s =
   String.to_seqi s |> Seq.for_all (fun (i, c) -> name_char_ok i (Char.code c))
 ;;
+
+let max_length = 31 (* FileDir.FnLength - 1: names are 0X-terminated in 32 bytes *)
+
+let file_name_ok s =
+  let n = String.length s in
+  n > 0 && n <= max_length && chars_ok s
+;;

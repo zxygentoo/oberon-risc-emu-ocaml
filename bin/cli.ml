@@ -9,8 +9,8 @@ let usage =
   \  --fullscreen          Start the emulator in full screen mode\n\
   \  --zoom REAL           Scale the display in windowed mode\n\
   \  --leds                Log LED state on stdout\n\
-  \  --mem MEGS            Set memory size\n\
-  \  --size WIDTHxHEIGHT   Set framebuffer size\n\
+  \  --mem MEGS            Set memory size (1..32; see below)\n\
+  \  --size WIDTHxHEIGHT   Set framebuffer size (see below)\n\
   \  --boot-from-serial    Boot from serial line (disk image not required)\n\
   \  --serial-in FILE      Read serial input from FILE\n\
   \  --serial-out FILE     Write serial output to FILE\n\
@@ -19,7 +19,11 @@ let usage =
   \  --frames N            Run N deterministic frames, print FNV-1a hashes, then exit \
    (headless only)\n\
   \  --shot-frames N,N,..  Save the framebuffer as risc-shotNNNN.png after each listed \
-   frame (with --frames)\n"
+   frame (with --frames)\n\n\
+   Without --mem/--size the machine is the reference FPGA system with 16 MiB of RAM:\n\
+   1024x768, the framebuffer at 1 MB, RAM above it for software that knows. Either\n\
+   option switches to the C emulator's configurable layout instead: MEGS of RAM\n\
+   (default 1) with the framebuffer right above it.\n"
 ;;
 
 (** Outcome of CLI parsing; the caller owns printing and exiting. *)

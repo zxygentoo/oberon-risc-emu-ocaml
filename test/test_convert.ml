@@ -15,6 +15,24 @@ let () =
   eqs "latin1_char_becomes_one_byte" (Convert.to_oberon "\xC3\xA4") "\xE4";
   (* U+2192 '→' is beyond Latin-1 -> '?' *)
   eqs "beyond_latin1_is_replaced" (Convert.to_oberon "a\xE2\x86\x92b") "a?b";
+  eq
+    "beyond_latin1_counted"
+    (Convert.beyond_latin1 "a\xE2\x86\x92b\xC3\xA4\xF0\x9F\x98\x80")
+    2;
+  (* A byte-order mark is not text: dropped, not written as '?' ahead of MODULE. *)
+  eqs "bom_dropped" (Convert.to_oberon "\xEF\xBB\xBFMODULE A;\n") "MODULE A;\r";
+  (* Text that is not UTF-8 (a Latin-1 file by mistake) is refused with the offset
+     of the first malformed byte, not silently written as '?'. *)
+  let invalid name s at =
+    check
+      name
+      (match Convert.to_oberon s with
+       | _ -> false
+       | exception Convert.Invalid_utf8 n -> n = at)
+  in
+  invalid "latin1_input_refused" "caf\xE9\n" 3;
+  invalid "truncated_sequence_refused" "ab\xC3" 2;
+  invalid "stray_continuation_refused" "\x80" 0;
   (* CR-terminated Oberon text round-trips *)
   eqs "round_trip_cr" (Convert.to_oberon (Convert.from_oberon "A\rB\r")) "A\rB\r";
   (* strip_text_header (oat's read path): tag=F1, off:4 LE = offset of the character

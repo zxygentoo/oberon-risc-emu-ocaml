@@ -226,26 +226,25 @@ let build seed ~sources ~output =
      with no half-built scratch dir to explain. *)
   let visible = sorted_visible sources in
   let plan = Resolve.resolve sources visible in
-  let scratch =
-    Filename.concat
-      (Filename.get_temp_dir_name ())
-      (Printf.sprintf "%s-%d" seed.name (Unix.getpid ()))
-  in
-  let drop_scratch () =
-    try Fsutil.rm_rf scratch with
-    | _ -> ()
-  in
-  drop_scratch ();
+  (* A fresh private (0700) directory: never a predictable path someone else could
+     have planted first, and nothing to clear out. *)
+  let scratch = Filename.temp_dir (seed.name ^ "-") "" in
   match run_pipeline seed sources scratch visible plan with
-  | dsk ->
-    (match Filename.dirname output with
-     | "" | "." -> ()
-     | parent -> Fsutil.mkdir_p parent);
-    Fsutil.write_file output (Fsutil.read_file dsk);
-    drop_scratch ()
   | exception e ->
     Printf.eprintf "%s: build failed; intermediates left in %s\n%!" seed.name scratch;
     raise e
+  | dsk ->
+    (* The pipeline succeeded, so the intermediates explain nothing — they go even
+       when the output can't be written. *)
+    Fun.protect
+      ~finally:(fun () ->
+        try Fsutil.rm_rf scratch with
+        | _ -> ())
+      (fun () ->
+         (match Filename.dirname output with
+          | "" | "." -> ()
+          | parent -> Fsutil.mkdir_p parent);
+         Fsutil.write_file output (Fsutil.read_file dsk))
 ;;
 
 module For_tests = struct

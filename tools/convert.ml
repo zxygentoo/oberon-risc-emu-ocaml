@@ -8,8 +8,36 @@ let latin1_to_utf8 bytes =
   Buffer.contents buf
 ;;
 
-(* UTF-8 -> Latin-1: code points beyond U+00FF become '?' (malformed bytes decode to
-   U+FFFD and land there too). *)
+exception Invalid_utf8 of int
+
+(* Byte offset of the first malformed UTF-8 sequence, if any. *)
+let first_invalid_utf8 s =
+  let rec go i =
+    if i >= String.length s
+    then None
+    else (
+      let dec = String.get_utf_8_uchar s i in
+      if Uchar.utf_decode_is_valid dec
+      then go (i + Uchar.utf_decode_length dec)
+      else Some i)
+  in
+  go 0
+;;
+
+let beyond_latin1 s =
+  let rec go i n =
+    if i >= String.length s
+    then n
+    else (
+      let dec = String.get_utf_8_uchar s i in
+      let n = if Uchar.to_int (Uchar.utf_decode_uchar dec) > 0xFF then n + 1 else n in
+      go (i + Uchar.utf_decode_length dec) n)
+  in
+  go 0 0
+;;
+
+(* UTF-8 -> Latin-1: code points beyond U+00FF become '?'. Only ever given valid
+   UTF-8 ({!to_oberon} checks first). *)
 let utf8_to_latin1 s =
   let buf = Buffer.create (String.length s) in
   let rec go i =
@@ -57,8 +85,15 @@ let from_oberon bytes =
   |> String.map (fun c -> if c = '\r' then '\n' else c)
 ;;
 
+(* A UTF-8 byte-order mark: no character of the text, and decoded as one it would
+   land as '?' ahead of MODULE. *)
+let bom = "\xEF\xBB\xBF"
+
 let to_oberon text =
-  text
+  Option.iter (fun at -> raise (Invalid_utf8 at)) (first_invalid_utf8 text);
+  (if String.starts_with ~prefix:bom text
+   then String.sub text 3 (String.length text - 3)
+   else text)
   |> replace_all ~sub:"\r\n" ~by:"\n"
   |> String.map (fun c -> if c = '\n' then '\r' else c)
   |> utf8_to_latin1

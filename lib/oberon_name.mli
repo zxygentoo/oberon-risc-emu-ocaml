@@ -8,3 +8,11 @@
     leading digit/dot. An empty [s] holds vacuously — emptiness and length limits are the
     caller's rules. *)
 val chars_ok : string -> bool
+
+(** The longest file name Oberon's file system holds: 31 bytes ([FileDir.FnLength]
+    less its 0X terminator). *)
+val max_length : int
+
+(** [file_name_ok s] holds for a whole, legal Oberon file name: non-empty, at most
+    {!max_length} bytes, and {!chars_ok}. *)
+val file_name_ok : string -> bool

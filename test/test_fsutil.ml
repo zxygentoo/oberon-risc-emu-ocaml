@@ -22,6 +22,18 @@ let () =
     Fsutil.rm_rf (Filename.concat dir "a");
     check "rm_rf_tree" (not (Sys.file_exists (Filename.concat dir "a")));
     Fsutil.rm_rf (Filename.concat dir "a");
-    check "rm_rf_missing_ok" (not (Sys.file_exists (Filename.concat dir "a"))));
+    check "rm_rf_missing_ok" (not (Sys.file_exists (Filename.concat dir "a")));
+    (* A symlink inside the tree is removed as a link: the directory it points at,
+       and its contents, are untouched. *)
+    let keep = Filename.concat dir "keep" in
+    Fsutil.mkdir_p keep;
+    Fsutil.write_file (Filename.concat keep "precious") "x";
+    let tree = Filename.concat dir "tree" in
+    Fsutil.mkdir_p tree;
+    Unix.symlink keep (Filename.concat tree "link");
+    Unix.symlink (Filename.concat dir "nowhere") (Filename.concat tree "dangling");
+    Fsutil.rm_rf tree;
+    check "rm_rf_symlink_tree_gone" (not (Sys.file_exists tree));
+    check "rm_rf_link_target_kept" (Sys.file_exists (Filename.concat keep "precious")));
   summary "fsutil checks"
 ;;

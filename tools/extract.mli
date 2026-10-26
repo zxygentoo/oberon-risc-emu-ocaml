@@ -1,7 +1,9 @@
 (** Extract a build-ready source tree from a Project Oberon disk image — the core of
     [extract-source] (port of the Rust binary's logic): every file except the compiled
-    artifacts ([.rsc]/[.smb], kept with [keep_objects]), plus a regenerated [.packonly]
-    manifest, so the tree builds as-is. *)
+    artifacts ([.rsc]/[.smb]), plus a regenerated [.packonly] manifest, so the tree
+    builds as-is. With [keep_objects] the artifacts are written too, for inspection or
+    as seed material; they are neither source nor pack-only, so the builders refuse
+    such a tree. *)
 
 (** Per-run tallies for the extractor's closing report; [packonly] doubles as the
     manifest content. *)

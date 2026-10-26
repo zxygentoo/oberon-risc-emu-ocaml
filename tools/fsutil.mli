@@ -15,5 +15,7 @@ val write_file : string -> string -> unit
     an existing directory is fine. *)
 val mkdir_p : string -> unit
 
-(** Delete a file or directory tree if it exists ([fs::remove_dir_all]). *)
+(** Delete a file or directory tree if it exists ([fs::remove_dir_all]). A symlink
+    is removed itself, never followed.
+    @raise Unix.Unix_error when something can't be removed. *)
 val rm_rf : string -> unit

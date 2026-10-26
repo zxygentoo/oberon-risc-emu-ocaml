@@ -5,7 +5,11 @@ module Wire = Data.Wire
 (* Device text via the shared ob2txt/txt2ob transforms ({!Oberon_tools.Convert}).
    Intentional divergence from the Rust oat, whose to_oberon sends raw UTF-8 bytes to
    the device: the Latin-1 fold makes non-ASCII writes round-trip on read. *)
-let to_oberon = Oberon_tools.Convert.to_oberon
+let to_oberon text =
+  try Oberon_tools.Convert.to_oberon text with
+  | Oberon_tools.Convert.Invalid_utf8 at -> Error.fail (Error.Not_utf8 at)
+;;
+
 let from_oberon = Oberon_tools.Convert.from_oberon
 let bad_status s = Error.fail (Error.Bad_status (Wire.status_byte s))
 let check_ok (r : Wire.response) = if r.status <> Wire.Ok then bad_status r.status

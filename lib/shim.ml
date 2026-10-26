@@ -66,10 +66,7 @@ let read_name ram adr =
 ;;
 
 (* Whether a directory entry name is legal (non-empty, < NAME_LEN, valid chars). *)
-let valid_name s =
-  let n = String.length s in
-  n > 0 && n < name_len && Oberon_name.chars_ok s
-;;
+let valid_name = Oberon_name.file_name_ok
 
 (* ---- Open files ----------------------------------------------------------- *)
 
