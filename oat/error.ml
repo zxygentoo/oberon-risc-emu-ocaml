@@ -6,6 +6,7 @@ type t =
       { name : string
       ; limit : int
       }
+  | Not_utf8 of int
   | Put_too_large of
       { bytes : int
       ; limit : int
@@ -207,6 +208,11 @@ let message = function
     "no serial connection specified — pass --serial or --serial-in/--serial-out"
   | Bad_name { name; limit } ->
     Printf.sprintf "name length %d out of range 1..%d: %S" (String.length name) limit name
+  | Not_utf8 at ->
+    Printf.sprintf
+      "input is not UTF-8 text (malformed at byte %d) — oat carries text, converted to \
+       Oberon's Latin-1"
+      at
   | Put_too_large { bytes; limit } ->
     Printf.sprintf
       "content is %d bytes — over the device's %d-byte receive buffer; split the file"

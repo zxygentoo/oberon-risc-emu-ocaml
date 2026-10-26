@@ -11,6 +11,9 @@ type t =
       { name : string
       ; limit : int (** {!Data.Wire.name_limit}. *)
       } (** A wire name whose length is outside 1..[limit] bytes. *)
+  | Not_utf8 of int
+  (** Host text (content, OLD/NEW, args) that is not UTF-8: the byte offset of the
+      first malformed sequence. *)
   | Put_too_large of
       { bytes : int
       ; limit : int
