@@ -78,6 +78,20 @@ let () =
    let got = Bytes.create 4 in
    M.mem_read_bytes ram 128 got;
    check "eof_zero_fills" (Bytes.to_string got = "\xAA\xBB\x00\x00"));
+  (* a read after seeking past the end (past the buffer, too) reads nothing and
+     zero-fills — it used to raise out of Bytes.blit and kill the build *)
+  (let ram = Array.make 64 0 in
+   M.mem_write_bytes ram 0 (Bytes.of_string "Scratch\x00");
+   let h = M.make_host () in
+   let fd = M.files_new h 0 ram in
+   M.mem_write_bytes ram 64 (Bytes.of_string "\xAA\xBB");
+   ignore (M.files_write h fd 64 2 ram : int);
+   ignore (M.files_seek h fd 1000 0 : int);
+   M.mem_write_bytes ram 128 (Bytes.of_string "\xFF\xFF\xFF\xFF");
+   eqx "seek_past_end_read_n" (M.files_read h fd 128 4 ram) 0;
+   let got = Bytes.create 4 in
+   M.mem_read_bytes ram 128 got;
+   check "seek_past_end_zero_fills" (Bytes.to_string got = "\x00\x00\x00\x00"));
   (* an illegal name / a missing file yield the error sentinel *)
   (let ram = Array.make 16 0 in
    M.mem_write_bytes ram 0 (Bytes.of_string "a/b\x00");

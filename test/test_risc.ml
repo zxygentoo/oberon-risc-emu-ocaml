@@ -263,6 +263,21 @@ let () =
   let r = cpu () in
   Risc.set_switches r 1;
   eqx "mmio_switches" (F.load_io r (F.io_start + 4)) 1;
+  (* Host values past 32 bits reach the guest modulo 2^32, like every word. *)
+  let r = cpu () in
+  Risc.set_time r ((1 lsl 33) + 7);
+  eqx "mmio_ms_counter_wraps" (F.load_io r F.io_start) 7;
+  Risc.set_switches r (-1);
+  eqx "mmio_switches_wrap" (F.load_io r (F.io_start + 4)) 0xFFFF_FFFF;
+  let r = cpu () in
+  Risc.set_serial
+    r
+    { Io.serial_read_status = (fun () -> 1 lsl 40)
+    ; serial_read_data = (fun () -> -2)
+    ; serial_write_data = ignore
+    };
+  eqx "mmio_device_value_wraps" (F.load_io r (F.io_start + 8)) 0xFFFF_FFFE;
+  eqx "mmio_device_status_wraps" (F.load_io r (F.io_start + 12)) 0;
   let r = cpu () in
   eqx "mmio_spi_default" (F.load_io r (F.io_start + 16)) 255;
   eqx "mmio_spi_status" (F.load_io r (F.io_start + 20)) 1;

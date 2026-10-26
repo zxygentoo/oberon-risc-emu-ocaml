@@ -26,14 +26,14 @@
     v}
 
     Invariants (property-tested):
-    - [decode (encode i) = i] for every constructible [i] whose offset/immediate
-      fields are in range;
+    - [decode (encode i) = i] for every [i] that [encode] accepts — it rejects
+      any field outside the range [decode] produces;
     - [encode (decode w) = w] for canonical [w] (don't-care bits zero — a
       register-target branch ignores bits 23..4, exactly as the hardware does). *)
 
 type word = int
 (* An unsigned 32-bit value held in an OCaml [int]. Requires a 64-bit host
-   ([Sys.int_size > 32], asserted at module load); the emulator's {!U32}
+   ([Sys.int_size > 32], checked at module load); the emulator's {!U32}
    convention. *)
 
 type reg = int (* 0..15 *)
@@ -149,5 +149,11 @@ type instr =
       ; target : target
       }
 
+(** The instruction word.
+    @raise Invalid_argument when a field does not fit its bits — a register
+    outside 0..15, an [Imm] outside 0..0xFFFF, a memory offset outside
+    -0x80000..0x7FFFF, a branch offset outside -0x800000..0x7FFFFF — instead of
+    masking it into a different instruction. *)
 val encode : instr -> word
+
 val decode : word -> instr

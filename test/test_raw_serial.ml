@@ -38,6 +38,16 @@ let () =
     ignore (Unix.write_substring w "z" 0 1);
     check "new_writer_ready" (rx_ready s);
     eq "new_writer_byte" (s.Io.serial_read_data ()) (Char.code 'z');
-    Unix.close w);
+    Unix.close w;
+    (* close is idempotent, and leaves an idle line that never touches the
+       (possibly reused) fd numbers again. *)
+    let line = Raw_serial.create fifo "/dev/null" in
+    let s = Raw_serial.to_serial line in
+    Raw_serial.close line;
+    Raw_serial.close line;
+    eq "closed_status_idle" (s.Io.serial_read_status ()) 0;
+    eq "closed_reads_zero" (s.Io.serial_read_data ()) 0;
+    s.Io.serial_write_data (Char.code 'x');
+    check "closed_write_dropped" true);
   summary "raw_serial checks"
 ;;

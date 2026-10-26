@@ -9,7 +9,9 @@
    - a *differential* check of [encode] against the hand-rolled encoders that
      test_risc / test_prop already trust (so the ADT is tied to the golden bit
      patterns, not just to itself);
-   - that [decode]'s fields agree field-for-field with the individual accessors. *)
+   - that [decode]'s fields agree field-for-field with the individual accessors;
+   - that [encode] rejects a field outside its bits instead of masking it into a
+     different instruction, and accepts every boundary value. *)
 
 open Risc_core
 open Risc5_isa
@@ -58,6 +60,48 @@ let g_instr =
 
 let u32 = G.int_range 0 0xFFFF_FFFF
 let bit b = if b then 1 else 0
+
+(* A value just past either end of [lo..hi], or far beyond. *)
+let g_outside lo hi =
+  G.oneof
+    [ G.int_range (lo - 0x1000_0000) (lo - 1); G.int_range (hi + 1) (hi + 0x1000_0000) ]
+;;
+
+(* Instructions with exactly one field out of range. *)
+let g_bad_instr =
+  let bad_reg = g_outside 0 15
+  and bad_off20 = g_outside (-0x0008_0000) 0x0007_FFFF
+  and alu ?(op = Add) ?(a = 0) ?(b = 0) operand =
+    Alu { op; u = false; v = false; a; b; operand }
+  and br target = Branch { cond = True; neg = false; link = false; target } in
+  G.oneof
+    [ G.map (fun a -> alu ~a (Reg 0)) bad_reg
+    ; G.map (fun b -> alu ~b (Reg 0)) bad_reg
+    ; G.map (fun c -> alu (Reg c)) bad_reg
+    ; G.map (fun i -> alu ~op:Mov (Imm i)) (g_outside 0 0xFFFF)
+    ; G.map (fun a -> Load { size = W; a; base = 0; off = 0 }) bad_reg
+    ; G.map (fun base -> Store { size = B; a = 0; base; off = 0 }) bad_reg
+    ; G.map (fun off -> Load { size = B; a = 0; base = 0; off }) bad_off20
+    ; G.map (fun off -> Store { size = W; a = 0; base = 0; off }) bad_off20
+    ; G.map (fun c -> br (To_reg c)) bad_reg
+    ; G.map (fun o -> br (To_off o)) (g_outside (-0x0080_0000) 0x007F_FFFF)
+    ]
+;;
+
+(* Every field at both ends of its range. *)
+let boundary_instrs =
+  let alu a b operand = Alu { op = Ior; u = true; v = true; a; b; operand } in
+  [ alu 0 0 (Reg 0)
+  ; alu 15 15 (Reg 15)
+  ; alu 0 0 (Imm 0)
+  ; alu 15 15 (Imm 0xFFFF)
+  ; Load { size = W; a = 15; base = 15; off = -0x0008_0000 }
+  ; Store { size = B; a = 0; base = 0; off = 0x0007_FFFF }
+  ; Branch { cond = Le; neg = true; link = true; target = To_reg 15 }
+  ; Branch { cond = Mi; neg = false; link = false; target = To_off (-0x0080_0000) }
+  ; Branch { cond = True; neg = false; link = true; target = To_off 0x007F_FFFF }
+  ]
+;;
 
 (* Hand-rolled encoders — verbatim from test_risc.ml / test_prop.ml (the ones the
    golden tests already trust). [encode] must reproduce them bit-for-bit. *)
@@ -184,6 +228,16 @@ let tests =
           (match target with
           | To_reg c -> (not (u w)) && c = rc w
           | To_off o -> u w && o = off24 w))
+  ; Q.Test.make
+      ~name:"encode rejects a field outside its bits"
+      ~count:3000
+      g_bad_instr
+      (fun i ->
+         match encode i with
+         | _ -> false
+         | exception Invalid_argument _ -> true)
+  ; Q.Test.make ~name:"encode accepts every boundary value" ~count:1 G.unit (fun () ->
+      List.for_all (fun i -> decode (encode i) = i) boundary_instrs)
   ]
 ;;
 

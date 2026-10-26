@@ -15,7 +15,7 @@ type state =
 (** An SD card attached to the SPI bus, backed by a [.dsk] host file. *)
 type t =
   { mutable state : state
-  ; fd : Unix.file_descr option
+  ; mutable fd : Unix.file_descr option (* None: diskless, or closed *)
   ; offset : int
   ; rx_buf : int array (* 128 *)
   ; mutable rx_idx : int
@@ -24,8 +24,12 @@ type t =
   ; mutable tx_idx : int
   }
 
-(* The C computes [secnum * 512] in 32-bit unsigned arithmetic. *)
-let seek_sector fd secnum = ignore (Unix.lseek fd (U32.wrap (secnum * 512)) Unix.SEEK_SET)
+(* The C computes [secnum * 512] in 32-bit unsigned arithmetic. A failed seek is
+   swallowed like a failed read or write: the card has no error path to report it. *)
+let seek_sector fd secnum =
+  try ignore (Unix.lseek fd (U32.wrap (secnum * 512)) Unix.SEEK_SET) with
+  | Unix.Unix_error _ -> ()
+;;
 
 (* Read up to 512 bytes at the fd's current position into [buf.(off .. off+127)]
    as little-endian words. Short reads at EOF leave the rest zero, as the C's
@@ -77,7 +81,7 @@ let create filename =
     match filename with
     | None -> None, 0
     | Some path ->
-      let fd = Unix.openfile path [ Unix.O_RDWR ] 0 in
+      let fd = Unix.openfile path [ Unix.O_RDWR; Unix.O_CLOEXEC ] 0 in
       (* Detect a filesystem-only image, which starts directly at sector 1
          (DiskAdr 29): read sector 0 and check the magic word. *)
       read_sector (Some fd) tx_buf 0;
@@ -92,6 +96,15 @@ let create filename =
   ; tx_cnt = 0
   ; tx_idx = 0
   }
+;;
+
+let close t =
+  Option.iter
+    (fun fd ->
+       try Unix.close fd with
+       | Unix.Unix_error _ -> ())
+    t.fd;
+  t.fd <- None
 ;;
 
 let run_command t =

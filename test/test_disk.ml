@@ -42,6 +42,13 @@ let read_file path =
     (fun () -> really_input_string ic (in_channel_length ic))
 ;;
 
+(* Open descriptors of this process, where /proc says (Linux); None elsewhere. *)
+let open_fds () =
+  if Sys.file_exists "/proc/self/fd"
+  then Some (Array.length (Sys.readdir "/proc/self/fd"))
+  else None
+;;
+
 let () =
   (* A filesystem-only image (first word 0x9B1EA38D) is detected and rebased. *)
   (let img = Bytes.make 1024 '\000' in
@@ -96,6 +103,25 @@ let () =
   (let s = Disk.to_spi (Disk.create None) in
    s.spi_write_data 0xFF;
    eq "diskless_idle" (s.spi_read_data ()) 255);
+  (* close releases the host file (it used to stay open for the process's life);
+     it is idempotent, and the card then reads like a diskless one. *)
+  (let path = temp_with (sector_bytes [| 0xDEADBEEF |]) in
+   let before = open_fds () in
+   let disks = List.init 20 (fun _ -> Disk.create (Some path)) in
+   List.iter Disk.close disks;
+   check "close_releases_fds" (open_fds () = before);
+   let d = Disk.create (Some path) in
+   Disk.close d;
+   Disk.close d;
+   let s = Disk.to_spi d in
+   send_command s 81 0;
+   s.spi_write_data 0xFF;
+   eq "closed_read_r1" (s.spi_read_data ()) 0;
+   s.spi_write_data 0xFF;
+   eq "closed_read_token" (s.spi_read_data ()) 254;
+   s.spi_write_data 0xFF;
+   eq "closed_reads_zero" (s.spi_read_data ()) 0;
+   Sys.remove path);
   (* An unmodelled command (CMD0) returns a single status byte. *)
   (let path = temp_with (Bytes.make 512 '\000') in
    let s = Disk.to_spi (Disk.create (Some path)) in
