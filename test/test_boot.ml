@@ -23,26 +23,12 @@ let goldens =
   ]
 ;;
 
-let copy_to_temp src =
-  let tmp = Filename.temp_file "oberon_boot_" ".dsk" in
-  let ic = open_in_bin src
-  and oc = open_out_bin tmp in
-  output_string oc (really_input_string ic (in_channel_length ic));
-  close_in ic;
-  close_out oc;
-  tmp
-;;
-
-(* Boot writes to the disk, so run against a throwaway copy. Devices are wired exactly as
-   the frontend does ({!Headless.standard_machine}), since the goldens were produced with
-   that configuration. *)
+(* Boot writes to the disk, so boot an in-memory card that leaves the image as it was.
+   Devices are wired exactly as the frontend does ({!Headless.standard_machine}), since
+   the goldens were produced with that configuration. *)
 let with_boot_machine f =
-  let tmp = copy_to_temp disk_image in
-  Fun.protect
-    ~finally:(fun () ->
-      try Sys.remove tmp with
-      | Sys_error _ -> ())
-    (fun () -> f (Headless.standard_machine ~disk:tmp Clipboard.noop_host))
+  let disk = Disk.of_string (In_channel.with_open_bin disk_image In_channel.input_all) in
+  f (Headless.standard_machine ~disk Clipboard.noop_host)
 ;;
 
 let check_hashes frames risc (want_fb, want_state) =

@@ -2,9 +2,9 @@
 
     Models just enough of the SD command protocol for Oberon: single-block read
     (CMD17 / 81) and write (CMD24 / 88), driven byte-by-byte through the {!Io.spi}
-    interface. A [.dsk] image is backed by a host file opened read+write; a
-    filesystem-only image (first word [0x9B1EA38D]) is detected and its sector
-    numbers are rebased by the fixed [0x80002] offset. *)
+    interface. A [.dsk] image is backed by a host file opened read+write, or held in
+    memory ({!of_string}); a filesystem-only image (first word [0x9B1EA38D]) is
+    detected and its sector numbers are rebased by the fixed [0x80002] offset. *)
 
 type state =
   | Command
@@ -12,11 +12,23 @@ type state =
   | Write
   | Writing
 
-(** An SD card attached to the SPI bus, backed by a [.dsk] host file. *)
+(* Where the card's blocks live. A memory card is sparse: the image it was made
+   from, overlaid with the blocks written since — so a guest write to a far block
+   costs one block, not a dense buffer up to it. *)
+type backing =
+  | No_card (* diskless, or closed *)
+  | File of Unix.file_descr
+  | Memory of
+      { image : string
+      ; written : (int, Bytes.t) Hashtbl.t (* block number -> its 512 bytes *)
+      }
+
+(** An SD card attached to the SPI bus. *)
 type t =
   { mutable state : state
-  ; mutable fd : Unix.file_descr option (* None: diskless, or closed *)
+  ; mutable backing : backing
   ; offset : int
+  ; mutable pos : int (* byte position of the block the last command addressed *)
   ; rx_buf : int array (* 128 *)
   ; mutable rx_idx : int
   ; tx_buf : int array (* 128 + 2 *)
@@ -24,72 +36,80 @@ type t =
   ; mutable tx_idx : int
   }
 
-(* The C computes [secnum * 512] in 32-bit unsigned arithmetic. A failed seek is
-   swallowed like a failed read or write: the card has no error path to report it. *)
-let seek_sector fd secnum =
-  try ignore (Unix.lseek fd (U32.wrap (secnum * 512)) Unix.SEEK_SET) with
-  | Unix.Unix_error _ -> ()
-;;
+(* The C computes [secnum * 512] in 32-bit unsigned arithmetic. *)
+let block_pos secnum = U32.wrap (secnum * 512)
 
-(* Read up to 512 bytes at the fd's current position into [buf.(off .. off+127)]
-   as little-endian words. Short reads at EOF leave the rest zero, as the C's
+(* The 512 bytes at [pos]. Short reads at EOF (or a failed seek or read — the card
+   has no error path to report one) leave the rest zero, as the C's
    zero-initialised buffer + fread does. *)
-let read_sector fd buf off =
+let read_block backing pos =
   let bytes = Bytes.make 512 '\000' in
-  (match fd with
-   | Some fd ->
-     (* Fill from the current position; stop short at EOF (read 0) or on error. *)
-     let rec fill pos =
-       if pos < 512
+  (match backing with
+   | No_card -> ()
+   | File fd ->
+     let rec fill off =
+       if off < 512
        then (
-         match Unix.read fd bytes pos (512 - pos) with
+         match Unix.read fd bytes off (512 - off) with
          | 0 -> ()
-         | n -> fill (pos + n)
+         | n -> fill (off + n)
          | exception Unix.Unix_error _ -> ())
      in
-     fill 0
-   | None -> ());
+     (match Unix.lseek fd pos Unix.SEEK_SET with
+      | _ -> fill 0
+      | exception Unix.Unix_error _ -> ())
+   | Memory { image; written } ->
+     (match Hashtbl.find_opt written (pos / 512) with
+      | Some block -> Bytes.blit block 0 bytes 0 512
+      | None ->
+        let n = min 512 (String.length image - pos) in
+        if n > 0 then Bytes.blit_string image pos bytes 0 n));
+  bytes
+;;
+
+let write_block backing pos bytes =
+  match backing with
+  | No_card -> ()
+  | File fd ->
+    let rec flush off =
+      if off < 512
+      then (
+        match Unix.write fd bytes off (512 - off) with
+        | 0 -> ()
+        | n -> flush (off + n)
+        | exception Unix.Unix_error _ -> ())
+    in
+    (match Unix.lseek fd pos Unix.SEEK_SET with
+     | _ -> flush 0
+     | exception Unix.Unix_error _ -> ())
+  | Memory { written; _ } -> Hashtbl.replace written (pos / 512) (Bytes.copy bytes)
+;;
+
+(* Read the block at [pos] into [buf.(off .. off+127)] as little-endian words. *)
+let read_sector backing pos buf off =
+  let bytes = read_block backing pos in
   for i = 0 to 127 do
     buf.(off + i) <- U32.of_int32 (Bytes.get_int32_le bytes (i * 4))
   done
 ;;
 
-let write_sector fd buf =
-  match fd with
-  | None -> ()
-  | Some fd ->
-    let bytes = Bytes.make 512 '\000' in
-    for i = 0 to 127 do
-      U32.set_le bytes (i * 4) buf.(i)
-    done;
-    let rec flush pos =
-      if pos < 512
-      then (
-        match Unix.write fd bytes pos (512 - pos) with
-        | 0 -> ()
-        | n -> flush (pos + n)
-        | exception Unix.Unix_error _ -> ())
-    in
-    flush 0
+let write_sector backing pos buf =
+  let bytes = Bytes.make 512 '\000' in
+  for i = 0 to 127 do
+    U32.set_le bytes (i * 4) buf.(i)
+  done;
+  write_block backing pos bytes
 ;;
 
-(** Open a disk image (or build a diskless card with [None], for
-    [--boot-from-serial]). Port of [disk_new]. *)
-let create filename =
+let make backing =
   let tx_buf = Array.make 130 0 in
-  let fd, offset =
-    match filename with
-    | None -> None, 0
-    | Some path ->
-      let fd = Unix.openfile path [ Unix.O_RDWR; Unix.O_CLOEXEC ] 0 in
-      (* Detect a filesystem-only image, which starts directly at sector 1
-         (DiskAdr 29): read sector 0 and check the magic word. *)
-      read_sector (Some fd) tx_buf 0;
-      Some fd, if tx_buf.(0) = 0x9B1E_A38D then 0x8_0002 else 0
-  in
+  (* Detect a filesystem-only image, which starts directly at sector 1 (DiskAdr 29):
+     read sector 0 and check the magic word. *)
+  read_sector backing 0 tx_buf 0;
   { state = Command
-  ; fd
-  ; offset
+  ; backing
+  ; offset = (if tx_buf.(0) = 0x9B1E_A38D then 0x8_0002 else 0)
+  ; pos = 0
   ; rx_buf = Array.make 128 0
   ; rx_idx = 0
   ; tx_buf
@@ -98,13 +118,39 @@ let create filename =
   }
 ;;
 
+(** Open a disk image (or build a diskless card with [None], for
+    [--boot-from-serial]). Port of [disk_new]. *)
+let create = function
+  | None -> make No_card
+  | Some path -> make (File (Unix.openfile path [ Unix.O_RDWR; Unix.O_CLOEXEC ] 0))
+;;
+
+let of_string image = make (Memory { image; written = Hashtbl.create 64 })
+
+let contents t =
+  match t.backing with
+  | Memory { image; written } ->
+    let size =
+      Hashtbl.fold
+        (fun block _ n -> max n ((block + 1) * 512))
+        written
+        (String.length image)
+    in
+    let out = Bytes.make size '\000' in
+    Bytes.blit_string image 0 out 0 (String.length image);
+    Hashtbl.iter (fun block data -> Bytes.blit data 0 out (block * 512) 512) written;
+    Bytes.unsafe_to_string out
+  | No_card | File _ ->
+    invalid_arg "Disk.contents: not an in-memory card (Disk.of_string)"
+;;
+
 let close t =
-  Option.iter
-    (fun fd ->
-       try Unix.close fd with
-       | Unix.Unix_error _ -> ())
-    t.fd;
-  t.fd <- None
+  (match t.backing with
+   | File fd ->
+     (try Unix.close fd with
+      | Unix.Unix_error _ -> ())
+   | No_card | Memory _ -> ());
+  t.backing <- No_card
 ;;
 
 let run_command t =
@@ -120,14 +166,12 @@ let run_command t =
      t.state <- Read;
      t.tx_buf.(0) <- 0;
      t.tx_buf.(1) <- 254;
-     let secnum = U32.sub arg t.offset in
-     Option.iter (fun fd -> seek_sector fd secnum) t.fd;
-     read_sector t.fd t.tx_buf 2;
+     t.pos <- block_pos (U32.sub arg t.offset);
+     read_sector t.backing t.pos t.tx_buf 2;
      t.tx_cnt <- 2 + 128
    | 88 ->
      t.state <- Write;
-     let secnum = U32.sub arg t.offset in
-     Option.iter (fun fd -> seek_sector fd secnum) t.fd;
+     t.pos <- block_pos (U32.sub arg t.offset);
      t.tx_buf.(0) <- 0;
      t.tx_cnt <- 1
    | _ ->
@@ -162,7 +206,7 @@ let write_data t value =
   | Writing ->
     if t.rx_idx < 128 then t.rx_buf.(t.rx_idx) <- value;
     t.rx_idx <- t.rx_idx + 1;
-    if t.rx_idx = 128 then write_sector t.fd t.rx_buf;
+    if t.rx_idx = 128 then write_sector t.backing t.pos t.rx_buf;
     if t.rx_idx = 130
     then (
       t.tx_buf.(0) <- 5;

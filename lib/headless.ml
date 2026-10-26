@@ -12,11 +12,11 @@ let fps = 60
 (** The standard machine wiring shared by the frontend, the golden boot test, and the
     bench: PCLink serial, a clipboard bridge over [host], and the disk as SPI slave 1.
     The golden hashes were produced with exactly this configuration. *)
-let standard_machine ?disk host =
+let standard_machine ?(disk = Disk.create None) host =
   let risc = Risc.make () in
   Risc.set_serial risc (Pclink.to_serial (Pclink.create ()));
   Risc.set_clipboard risc (Clipboard.to_clipboard (Clipboard.create host));
-  Risc.set_spi risc 1 (Disk.to_spi (Disk.create disk));
+  Risc.set_spi risc 1 (Disk.to_spi disk);
   risc
 ;;
 
