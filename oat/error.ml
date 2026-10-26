@@ -2,7 +2,10 @@
 
 type t =
   | No_serial
-  | Bad_name of string
+  | Bad_name of
+      { name : string
+      ; limit : int
+      }
   | Put_too_large of
       { bytes : int
       ; limit : int
@@ -38,13 +41,23 @@ type t =
       ; got : int
       ; want : int
       }
+  | Send_timeout of
+      { secs : float
+      ; sent : int
+      ; total : int
+      }
   | Eof
   | Bad_sync of
       { got : int
       ; expected : int
       }
+  | Bad_length of
+      { length : int
+      ; limit : int
+      }
   | Bad_status of int
   | File_not_found of string
+  | Write_refused of string
   | Edit_not_found
   | Edit_not_unique of int
   | Load_failed of
@@ -61,6 +74,7 @@ let fail e = raise (Error e)
 
 let exit_code = function
   | File_not_found _
+  | Write_refused _
   | Edit_not_found
   | Edit_not_unique _
   | Load_failed _
@@ -191,11 +205,11 @@ let serial_link_message ~path ~baud ~attempts cause =
 let message = function
   | No_serial ->
     "no serial connection specified — pass --serial or --serial-in/--serial-out"
-  | Bad_name name ->
-    Printf.sprintf "name length %d out of range 1..255: %S" (String.length name) name
+  | Bad_name { name; limit } ->
+    Printf.sprintf "name length %d out of range 1..%d: %S" (String.length name) limit name
   | Put_too_large { bytes; limit } ->
     Printf.sprintf
-      "content is %d bytes — over the device's %d-byte PUT buffer; split the file"
+      "content is %d bytes — over the device's %d-byte receive buffer; split the file"
       bytes
       limit
   | Open_fifo { path; err } -> open_fifo_message path err
@@ -214,6 +228,14 @@ let message = function
       secs
       got
       want
+  | Send_timeout { secs; sent; total } ->
+    Printf.sprintf
+      "the device stopped taking bytes for %gs (%d/%d bytes sent)\n\
+      \  hint: is the emulator running, and the Oberon system idle? A busy system does \
+       not poll the serial line"
+      secs
+      sent
+      total
   | Eof -> "serial line closed (EOF) — the emulator dropped the connection"
   | Bad_sync { got; expected } ->
     Printf.sprintf
@@ -221,8 +243,20 @@ let message = function
        the emulator"
       got
       expected
+  | Bad_length { length; limit } ->
+    Printf.sprintf
+      "response claims %d bytes, over the %d-byte cap — the device is out of frame; run \
+       `check`"
+      length
+      limit
   | Bad_status status -> Printf.sprintf "device returned status=%d" status
   | File_not_found path -> Printf.sprintf "file not found: %s" path
+  | Write_refused path ->
+    Printf.sprintf
+      "device refused to create %s\n\
+      \  hint: an Oberon file name is a letter, then letters, digits or dots — at most \
+       31 bytes"
+      path
   | Edit_not_found -> "OLD string not found in file"
   | Edit_not_unique count ->
     Printf.sprintf "OLD string occurs %d times in file (must be unique)" count

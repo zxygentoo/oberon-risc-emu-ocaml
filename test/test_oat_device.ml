@@ -77,6 +77,16 @@ let () =
       | Error.Timeout { got = 1; want = 3; _ } -> true
       | _ -> false)
     (fun () -> Device.recv d (Bytes.create 3));
+  (* A peer that stops taking bytes fails the send after the timeout, reporting
+     how far it got, instead of blocking forever once the pipe's buffer fills. *)
+  let d, _resp, _sent_undrained = harness 0.05 in
+  let frame = String.make (1 lsl 20) 'x' in
+  expect_error
+    "stalled_peer_send_times_out"
+    (function
+      | Error.Send_timeout { sent; total; _ } -> sent > 0 && sent < total
+      | _ -> false)
+    (fun () -> Device.send d frame);
   (* A closed line is EOF, not a timeout. *)
   let d, resp_write, _sent = harness 1.0 in
   Unix.close resp_write;

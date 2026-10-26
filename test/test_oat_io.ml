@@ -97,15 +97,42 @@ let () =
     "encode_edit_empty_new"
     (Io.For_tests.encode_request (Wire.Edit { name = "X"; old = "a"; new_ = "" }))
     "\xA5\x04\x01X\x01\x00\x00\x00a\x00\x00\x00\x00";
-  (* Names carry a 1-byte length prefix: 1..255 bytes only. *)
+  (* Names carry a 1-byte length prefix, but the device holds them in 64 bytes:
+     1..63 only. A longer one used to trap the device mid-frame and leave the rest
+     of the frame to be parsed as fresh requests. *)
   expect_bad_name "empty_name_rejected" (fun () ->
     Io.For_tests.encode_request (Wire.Get { name = "" }));
-  expect_bad_name "long_name_rejected" (fun () ->
-    Io.For_tests.encode_request (Wire.Get { name = String.make 256 'x' }));
+  expect_bad_name "name_over_limit_rejected" (fun () ->
+    Io.For_tests.encode_request (Wire.Get { name = String.make 64 'x' }));
+  expect_bad_name "cmd_over_limit_rejected" (fun () ->
+    Io.For_tests.encode_request (Wire.Call { cmd = String.make 64 'x'; par = "" }));
   check
-    "name_at_255_accepted"
-    (String.length (Io.For_tests.encode_request (Wire.Get { name = String.make 255 'x' }))
-     = 2 + 1 + 255);
+    "name_at_limit_accepted"
+    (String.length (Io.For_tests.encode_request (Wire.Get { name = String.make 63 'x' }))
+     = 2 + 1 + 63);
+  (* Every payload lands in the device's one receive buffer: PUT data, CALL par
+     and EDIT NEW past it are refused before any byte goes out. *)
+  let over = String.make (Wire.put_limit + 1) 'x' in
+  let too_large name req =
+    expect_error
+      name
+      (function
+        | Error.Put_too_large { bytes; limit } ->
+          bytes = Wire.put_limit + 1 && limit = Wire.put_limit
+        | _ -> false)
+      (fun () -> Io.For_tests.encode_request req)
+  in
+  too_large "put_over_limit_rejected" (Wire.Put { name = "X"; data = over });
+  too_large "call_par_over_limit_rejected" (Wire.Call { cmd = "A.B"; par = over });
+  too_large
+    "edit_new_over_limit_rejected"
+    (Wire.Edit { name = "X"; old = "a"; new_ = over });
+  check
+    "put_at_limit_accepted"
+    (String.length
+       (Io.For_tests.encode_request
+          (Wire.Put { name = "X"; data = String.make Wire.put_limit 'x' }))
+     = 2 + 2 + 4 + Wire.put_limit);
   (* Response decoding. *)
   let r = read_with "\x5A\x00\x03\x00\x00\x00abc" in
   check "ok_with_payload_status" (r.status = Wire.Ok);
@@ -127,6 +154,14 @@ let () =
   eq "status_byte_roundtrips_0_255" !roundtrip_failures 0;
   let r = read_with "\x5A\x2A\x00\x00\x00\x00" in
   check "unknown_status_preserved" (r.status = Wire.Other 0x2A);
+  (* A length past any honest response (here a device's negative INTEGER) is a
+     corrupt frame, refused before the payload is allocated. *)
+  expect_error
+    "huge_length_rejected"
+    (function
+      | Error.Bad_length { length = 0xFFFFF46B; limit } -> limit = Wire.response_limit
+      | _ -> false)
+    (fun () -> read_with "\x5A\x00\x6B\xF4\xFF\xFF");
   (* The device-side test codec inverts the production one. *)
   check
     "parse_inverts_get"

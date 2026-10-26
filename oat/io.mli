@@ -3,8 +3,9 @@
     within the given retry budget.
 
     Host is master: one REQUEST out, one RESPONSE back. All multi-byte integers
-    are unsigned little-endian; names carry a 1-byte length prefix. Constants
-    match [AgentProtocol.Mod]. The raw encoding never leaves this module — the
+    are unsigned little-endian; names carry a 1-byte length prefix, payloads a
+    4-byte one. Constants and limits match [AgentProtocol.Mod]; a request past
+    a limit is refused here, before any byte goes out. The raw encoding never leaves this module — the
     production surface is {!send} alone; the codec and retry internals are
     exposed only through {!For_tests}. *)
 
@@ -20,19 +21,25 @@
     misframed reply). The device self-recovers per frame — its bounded [Rec]
     clears [rxOk], the handler bails without committing or replying, and the
     next poll resyncs on a fresh [sync] — so simply re-sending the request
-    succeeds. It is safe for every opcode because the lossy direction is device
-    RX only: a desync drops a byte {i before} the device acts, so nothing was
-    committed. Only the desync signatures ([Timeout], [Bad_sync]) are retried —
+    succeeds. Only the desync signatures ([Timeout], [Bad_sync]) are retried —
     tool-level statuses never raise here, and genuine line failures ([Eof],
     [Io], open errors) are not transient, so they fail fast.
+
+    A re-send is only as safe as the request, though. A desync drops a byte
+    {i before} the device acts, but the same signatures also follow a device
+    that {i did} act — a command slower than the timeout, a late reply, noise
+    on the line — and then the request runs twice. So the caller passes a
+    budget only for requests a second run can't change ({!Cli} decides per
+    operation), and 0 for the rest.
 
     On a real serial line ({!Device.line}), a desync that outlives the budget is
     raised as [Serial_link] — the last [Timeout] / [Bad_sync] plus the line the
     host holds and the attempts made — since there it is a link to debug, not an
     emulator to restart.
 
-    @raise Error.Error on timeout, EOF, a bad sync byte, an I/O error, or (at
-    encode time) a name outside 1..255 bytes. *)
+    @raise Error.Error on timeout, EOF, a bad sync byte or response length, an
+    I/O error, or (at encode time) a name outside 1..{!Data.Wire.name_limit}
+    bytes or a payload over {!Data.Wire.put_limit}. *)
 val send : Device.t -> retries:int -> Data.Wire.t
 
 (** The codec and retry internals, exposed for the tests that pin frame bytes
@@ -42,12 +49,12 @@ val send : Device.t -> retries:int -> Data.Wire.t
     requests nor encodes responses). *)
 module For_tests : sig
   (** Encode a REQUEST frame.
-      @raise Error.Error on a name outside 1..255 bytes. *)
+      @raise Error.Error on a name or payload past its limit. *)
   val encode_request : Data.Wire.request -> string
 
   (** [read_response recv] decodes one RESPONSE frame; [recv buf] must fill all
-      of [buf]. @raise Error.Error on a bad sync byte (and whatever [recv]
-      raises). *)
+      of [buf]. @raise Error.Error on a bad sync byte or a length over
+      {!Data.Wire.response_limit} (and whatever [recv] raises). *)
   val read_response : (bytes -> unit) -> Data.Wire.response
 
   (** [with_retries ~retries f] re-runs [f] on a transport desync, up to

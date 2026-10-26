@@ -1,9 +1,9 @@
 (** The serial byte channel to the device — an open PTY / serial device (raw
     mode) or emulator FIFO pair — plus the per-channel accommodations the line's
-    physics dictate: inter-byte pacing, stale-byte draining, and the read
-    timeout. Bytes only: the frame grammar lives in {!Io}.
+    physics dictate: inter-byte pacing, stale-byte draining, and the timeout.
+    Bytes only: the frame grammar lives in {!Io}.
 
-    [Unix.select] provides the timed read-availability poll. The line setup is
+    [Unix.select] provides the timed availability polls, both ways. The line setup is
     oat's own C stub ([serial_stubs.c]), compiled with the project, because the
     [Unix] library's baud table is frozen into the switch's static archive and
     goes stale across a glibc upgrade. *)
@@ -34,9 +34,11 @@ val open_device : string -> timeout:float -> baud:int -> char_delay:float -> t
 
 (** Open a FIFO pair: [in_path] is the FIFO the emulator reads (we write),
     [out_path] the one it writes (we read). Both are opened read-write, which
-    never blocks on a FIFO regardless of the peer. The FIFO path is lossless and
-    back-pressured, so no char-delay applies — and a timeout on it is a genuine
-    hang, which is why {!Cli} gives {!Io.send} a zero retry budget for it.
+    never blocks on a FIFO regardless of the peer; the write end is then made
+    non-blocking, so a full FIFO stalls {!send} only up to the timeout. The FIFO
+    path is lossless and back-pressured, so no char-delay applies — and a
+    timeout on it is a genuine hang, which is why {!Cli} gives {!Io.send} a zero
+    retry budget for it.
     @raise Error.Error ([Open_fifo]) when a FIFO cannot be opened. *)
 val open_fifos : in_path:string -> out_path:string -> timeout:float -> t
 
@@ -49,8 +51,10 @@ val line : t -> line option
 val drain : t -> unit
 
 (** Write one frame, pacing bytes [char_delay] apart when nonzero. The channel
-    does not inspect the bytes.
-    @raise Error.Error ([Io]) on a write error. *)
+    does not inspect the bytes. A peer that takes no byte for the channel
+    timeout fails the send — the request is then cut short, which the device's
+    bounded receive turns into a dropped frame.
+    @raise Error.Error ([Send_timeout], or [Io] on a write error). *)
 val send : t -> string -> unit
 
 (** Fill all of [buf], polling up to the channel timeout for each chunk.
@@ -58,7 +62,8 @@ val send : t -> string -> unit
 val recv : t -> bytes -> unit
 
 (** Direct construction over arbitrary fds — for tests that wire the channel to
-    pipes. [writer = None] sends on [reader] (the PTY shape). The rest are the
+    pipes. [writer = None] sends on [reader] (the PTY shape); a [Some] writer
+    goes non-blocking, as {!open_fifos} makes it. The rest are the
     pieces of {!open_device}, for tests that drive them on a pseudo-terminal. *)
 module For_tests : sig
   val make
