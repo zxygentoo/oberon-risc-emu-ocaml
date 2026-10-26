@@ -1,5 +1,10 @@
 ; The oat executable — the process contract over the oat library.
 
+; Installed with the host tools, though experimental: its CLI and wire protocol are
+; outside the 1.0 stability promise.
+
 (executable
  (name oat)
+ (public_name oat)
+ (package oberon-risc-tools)
  (libraries oat oberon_tools unix))

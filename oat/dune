@@ -8,12 +8,12 @@
 ; serial_stubs.c is Device's line setup (raw 8N1 + baud) — oat's own, not
 ; Unix.tcsetattr, so its baud constants always match the libc it links to.
 
-; oberon_risc appears only for U32 (the u32 <-> LE-byte codec shared repo-wide);
+; oberon-risc appears only for U32 (the u32 <-> LE-byte codec shared repo-wide);
 ; the emulator itself stays behind the serial FIFO surface.
 
 (library
  (name oat)
- (libraries oberon_risc oberon_tools unix)
+ (libraries oberon-risc oberon_tools unix)
  (foreign_stubs
   (language c)
   (names serial_stubs)))

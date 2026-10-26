@@ -5,6 +5,11 @@
 ;   build-eo-image    - the Extended Oberon counterpart
 ; (oat, the live-system serial client, lives in its own oat/ directory.)
 
+; Installed under hyphenated names; in-tree scripts (the root Makefile, downstream
+; mkdsk.sh) keep using _build/default/tools/bin/<name>.exe.
+
 (executables
  (names ob2txt txt2ob extract_source build_po_image build_eo_image)
+ (public_names ob2txt txt2ob extract-source build-po-image build-eo-image)
+ (package oberon-risc-tools)
  (libraries oberon_tools unix))

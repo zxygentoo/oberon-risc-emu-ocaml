@@ -1,41 +1,17 @@
-(* The executables' command-line contract, end to end against the built binaries —
+(* The host tools' command-line contract, end to end against the built binaries —
    what scripts downstream (DOOM-on-Oberon's mkdsk.sh, the root Makefile) rely on:
    -h/--help and --version exit 0; a usage error (unknown option, wrong arguments)
-   exits 2 with a pointer to --help; work that fails exits 1. *)
+   exits 2 with a pointer to --help; work that fails exits 1. risc keeps the same
+   contract: test_risc_cli_contract. *)
 
 open Test_harness
 
-(* Run [exe args] in [dir]; exit code, stdout, stderr. *)
-let run dir exe args =
-  let out = Filename.concat dir "stdout"
-  and err = Filename.concat dir "stderr" in
-  let fd path = Unix.openfile path [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC ] 0o600 in
-  let o = fd out
-  and e = fd err in
-  let pid = Unix.create_process exe (Array.of_list (exe :: args)) Unix.stdin o e in
-  Unix.close o;
-  Unix.close e;
-  let code =
-    match Unix.waitpid [] pid with
-    | _, Unix.WEXITED c -> c
-    | _ -> -1
-  in
-  code, read_file out, read_file err
-;;
-
-let contains ~sub s =
-  let n = String.length sub in
-  let rec go i = i + n <= String.length s && (String.sub s i n = sub || go (i + 1)) in
-  go 0
-;;
-
-(* Paths are relative to this test's directory in _build; made absolute so [run] can
-   start them from a scratch dir. *)
+(* Relative to this test's directory in _build; absolute so they run from a scratch
+   dir. *)
 let exe path = Filename.concat (Sys.getcwd ()) path
 
 let tools =
-  [ "risc", exe "../bin/risc.exe"
-  ; "ob2txt", exe "../tools/bin/ob2txt.exe"
+  [ "ob2txt", exe "../tools/bin/ob2txt.exe"
   ; "txt2ob", exe "../tools/bin/txt2ob.exe"
   ; "extract-source", exe "../tools/bin/extract_source.exe"
   ; "build-po-image", exe "../tools/bin/build_po_image.exe"
@@ -43,39 +19,28 @@ let tools =
   ]
 ;;
 
+(* The shared matrix: --help, --version, an unknown option, no arguments. *)
+let check_conventions ~run (name, exe) =
+  let t what = name ^ "_" ^ what in
+  let code, out, _ = run exe [ "--help" ] in
+  check (t "help_exit_0") (code = 0);
+  check (t "help_usage") (contains ~sub:"Usage:" out);
+  let code, out, _ = run exe [ "--version" ] in
+  check (t "version_exit_0") (code = 0);
+  eqs (t "version_line") out (name ^ " " ^ Oberon_risc.Version.version ^ "\n");
+  let code, _, err = run exe [ "--bogus" ] in
+  check (t "unknown_option_exit_2") (code = 2);
+  check (t "unknown_option_points_at_help") (contains ~sub:"--help" err);
+  let code, _, _ = run exe [] in
+  check (t "no_args_exit_2") (code = 2)
+;;
+
 let () =
   with_scratch ~prefix:"cli_contract" (fun dir ->
-    let run = run dir in
-    List.iter
-      (fun (name, exe) ->
-         let t what = name ^ "_" ^ what in
-         let code, out, _ = run exe [ "--help" ] in
-         check (t "help_exit_0") (code = 0);
-         check (t "help_usage") (contains ~sub:"Usage:" out);
-         let code, out, _ = run exe [ "--version" ] in
-         check (t "version_exit_0") (code = 0);
-         eqs (t "version_line") out (name ^ " " ^ Oberon_risc.Version.version ^ "\n");
-         let code, _, err = run exe [ "--bogus" ] in
-         check (t "unknown_option_exit_2") (code = 2);
-         check (t "unknown_option_points_at_help") (contains ~sub:"--help" err);
-         let code, _, _ = run exe [] in
-         check (t "no_args_exit_2") (code = 2))
-      tools;
+    let run = run_exe ~cwd:dir in
+    List.iter (check_conventions ~run) tools;
     let tool name = List.assoc name tools in
     let path name = Filename.concat dir name in
-    (* risc: usage errors are 2, a failed run 1. *)
-    let code, _, _ = run (tool "risc") [ "a.dsk"; "b.dsk" ] in
-    check "risc_two_disks_exit_2" (code = 2);
-    let code, _, _ = run (tool "risc") [ "--headless=1"; "a.dsk" ] in
-    check "risc_flag_value_exit_2" (code = 2);
-    let code, _, err =
-      run (tool "risc") [ "--headless"; "--frames"; "1"; path "nope.dsk" ]
-    in
-    check "risc_missing_image_exit_1" (code = 1);
-    check "risc_missing_image_named" (contains ~sub:"nope.dsk" err);
-    let code, _, err = run (tool "risc") [ "--headless"; "--frames"; "1"; dir ] in
-    check "risc_directory_image_exit_1" (code = 1);
-    check "risc_directory_image_named" (contains ~sub:dir err);
     (* The converters: a round trip; a refused input writes nothing. *)
     write_file (path "M.Mod.txt") "MODULE M;\nEND M.\n";
     let code, _, _ = run (tool "txt2ob") [ path "M.Mod.txt" ] in

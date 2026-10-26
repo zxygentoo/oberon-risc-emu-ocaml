@@ -82,3 +82,26 @@ let with_scratch ~prefix f =
   Unix.mkdir dir 0o755;
   Fun.protect ~finally:(fun () -> rm_rf dir) (fun () -> f dir)
 ;;
+
+let contains ~sub s =
+  let n = String.length sub in
+  let rec go i = i + n <= String.length s && (String.sub s i n = sub || go (i + 1)) in
+  go 0
+;;
+
+let run_exe ~cwd exe args =
+  let out = Filename.concat cwd "stdout"
+  and err = Filename.concat cwd "stderr" in
+  let fd path = Unix.openfile path [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC ] 0o600 in
+  let o = fd out
+  and e = fd err in
+  let pid = Unix.create_process exe (Array.of_list (exe :: args)) Unix.stdin o e in
+  Unix.close o;
+  Unix.close e;
+  let code =
+    match Unix.waitpid [] pid with
+    | _, Unix.WEXITED c -> c
+    | _ -> -1
+  in
+  code, read_file out, read_file err
+;;

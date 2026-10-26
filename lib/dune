@@ -1,3 +1,4 @@
 (library
  (name oberon_risc)
+ (public_name oberon-risc)
  (libraries unix))
