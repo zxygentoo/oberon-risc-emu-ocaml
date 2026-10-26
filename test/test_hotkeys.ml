@@ -4,7 +4,7 @@
 open Tsdl
 open Test_harness
 
-let act = App.map_action
+let act = App.map_action ~repeat:false
 
 let () =
   let none = Sdl.Kmod.none in
@@ -45,5 +45,17 @@ let () =
     "f12_release_is_input"
     (act ~down:false ~keycode:Sdl.K.f12 ~kmod:none = `Oberon_input);
   check "letter_is_input" (act ~down:true ~keycode:Sdl.K.a ~kmod:none = `Oberon_input);
+  (* A held key auto-repeats: hotkeys act once per press, Oberon input repeats. *)
+  let held = App.map_action ~repeat:true in
+  check "held_f12_ignored" (held ~down:true ~keycode:Sdl.K.f12 ~kmod:none = `Ignore);
+  check "held_f10_ignored" (held ~down:true ~keycode:Sdl.K.f10 ~kmod:none = `Ignore);
+  check "held_f11_ignored" (held ~down:true ~keycode:Sdl.K.f11 ~kmod:none = `Ignore);
+  check
+    "held_alt_f4_ignored"
+    (held ~down:true ~keycode:Sdl.K.f4 ~kmod:Sdl.Kmod.lalt = `Ignore);
+  check "held_letter_repeats" (held ~down:true ~keycode:Sdl.K.a ~kmod:none = `Oberon_input);
+  check
+    "held_lalt_still_mouse"
+    (held ~down:true ~keycode:Sdl.K.lalt ~kmod:none = `Fake_mouse2);
   summary "hotkey checks"
 ;;

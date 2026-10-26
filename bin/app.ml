@@ -45,24 +45,27 @@ let copy_file src dst =
     output_string oc (In_channel.with_open_bin src In_channel.input_all))
 ;;
 
-(* Map a key event to a frontend action, mirroring sdl-main.c's key_map. *)
-let map_action ~down ~keycode ~kmod =
+(* Map a key event to a frontend action, mirroring sdl-main.c's key_map. A held key
+   repeats its key-down: Oberon wants those (typematic input), but a frontend
+   hotkey acts once per press — no burst of resets or screenshots. *)
+let map_action ~repeat ~down ~keycode ~kmod =
   let has m = kmod land m <> 0 in
   let open Sdl in
+  let hotkey action = if repeat then `Ignore else action in
   if down && keycode = K.f4 && has Kmod.alt
-  then `Quit
+  then hotkey `Quit
   else if down && keycode = K.f12
-  then `Reset
+  then hotkey `Reset
   else if down && keycode = K.delete && has Kmod.ctrl && has Kmod.shift
-  then `Reset
+  then hotkey `Reset
   else if down && keycode = K.f11
-  then `Toggle_fullscreen
+  then hotkey `Toggle_fullscreen
   else if down && keycode = K.return && has Kmod.alt
-  then `Toggle_fullscreen
+  then hotkey `Toggle_fullscreen
   else if down && keycode = K.f && has Kmod.gui && has Kmod.shift
-  then `Toggle_fullscreen
+  then hotkey `Toggle_fullscreen
   else if down && keycode = K.f10
-  then `Screenshot
+  then hotkey `Screenshot
   else if keycode = K.lalt
   then `Fake_mouse2 (* both press and release *)
   else `Oberon_input
@@ -90,14 +93,11 @@ let run_headless (cfg : Cli.config) =
     in
     loop start
   | Some frames ->
-    (* Boot writes to the disk, so run against a throwaway copy. *)
+    (* Boot writes to the disk, so run against a throwaway copy — made inside the
+       protected region, so a copy that fails (a missing or unreadable image) still
+       removes the temp file. *)
     let scratch =
-      match cfg.disk_image with
-      | Some src ->
-        let tmp = Filename.temp_file "oberon_headless_" ".dsk" in
-        copy_file src tmp;
-        Some tmp
-      | None -> None
+      Option.map (fun _ -> Filename.temp_file "oberon_headless_" ".dsk") cfg.disk_image
     in
     Fun.protect
       ~finally:(fun () ->
@@ -107,6 +107,9 @@ let run_headless (cfg : Cli.config) =
            | Sys_error _ -> ())
         | None -> ())
       (fun () ->
+         (match cfg.disk_image, scratch with
+          | Some src, Some tmp -> copy_file src tmp
+          | _ -> ());
          let risc = build_machine cfg scratch RC.Clipboard.noop_host in
          (* cfg.shot_frames is ascending and deduped, so one head comparison per
             frame suffices; capture is a pure read, leaving the hashes intact. *)
@@ -224,7 +227,9 @@ let run_gui (cfg : Cli.config) =
         let keycode = Sdl.Event.(get e keyboard_keycode) in
         let kmod = Sdl.Event.(get e keyboard_keymod) in
         let scancode = Sdl.Event.(get e keyboard_scancode) in
-        (match map_action ~down ~keycode ~kmod with
+        let repeat = Sdl.Event.(get e keyboard_repeat) <> 0 in
+        (match map_action ~repeat ~down ~keycode ~kmod with
+         | `Ignore -> ()
          | `Quit -> done_ := true
          | `Reset -> Core.reset risc
          | `Toggle_fullscreen ->
@@ -235,7 +240,13 @@ let run_gui (cfg : Cli.config) =
                 (if !fullscreen
                  then Sdl.Window.fullscreen_desktop
                  else Sdl.Window.windowed))
-         | `Screenshot -> Printf.printf "screenshot: %s\n%!" (Screenshot.save risc)
+         | `Screenshot ->
+           (* A shot that can't be saved (an unwritable directory, a full disk)
+              must not end the session it was meant to record. *)
+           (match Screenshot.save risc with
+            | name -> Printf.printf "screenshot: %s\n%!" name
+            | exception Sys_error msg ->
+              Printf.eprintf "risc: screenshot not saved: %s\n%!" msg)
          | `Fake_mouse2 -> Core.mouse_button risc 2 down
          | `Oberon_input ->
            let bytes = Ps2.encode ~scancode ~make:down ~kmod in
