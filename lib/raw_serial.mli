@@ -1,5 +1,7 @@
 (** Raw serial line over host file descriptors (port of the POSIX branch of
-    [raw-serial.c]), used by [--serial-in]/[--serial-out]. *)
+    [raw-serial.c]), used by [--serial-in]/[--serial-out]. Unlike the C, end of
+    input (a FIFO with no writer left, a file read to its end) reads as "no byte
+    ready", not as a stream of ready NULs. *)
 
 (** A raw serial line over a pair of host file descriptors. *)
 type t
