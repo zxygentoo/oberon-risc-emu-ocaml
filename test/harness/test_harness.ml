@@ -58,28 +58,18 @@ let summary label =
 let write_file path s = Out_channel.with_open_bin path (fun oc -> output_string oc s)
 let read_file path = In_channel.with_open_bin path In_channel.input_all
 
+(* lstat: a symlink is removed itself, never descended into. *)
 let rec rm_rf path =
-  if Sys.file_exists path
-  then
-    if Sys.is_directory path
-    then (
-      Array.iter (fun n -> rm_rf (Filename.concat path n)) (Sys.readdir path);
-      Sys.rmdir path)
-    else Sys.remove path
+  match Unix.lstat path with
+  | { Unix.st_kind = Unix.S_DIR; _ } ->
+    Array.iter (fun n -> rm_rf (Filename.concat path n)) (Sys.readdir path);
+    Unix.rmdir path
+  | _ -> Unix.unlink path
+  | exception Unix.Unix_error (Unix.ENOENT, _, _) -> ()
 ;;
 
-(* pid keeps parallel dune runs apart; the counter keeps one process's dirs apart. *)
-let scratch_counter = ref 0
-
 let with_scratch ~prefix f =
-  incr scratch_counter;
-  let dir =
-    Filename.concat
-      (Filename.get_temp_dir_name ())
-      (Printf.sprintf "%s%d-%d" prefix (Unix.getpid ()) !scratch_counter)
-  in
-  rm_rf dir;
-  Unix.mkdir dir 0o755;
+  let dir = Filename.temp_dir prefix "" in
   Fun.protect ~finally:(fun () -> rm_rf dir) (fun () -> f dir)
 ;;
 

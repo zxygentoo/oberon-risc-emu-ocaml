@@ -35,8 +35,8 @@ val read_file : string -> string
 (** Delete a file or directory tree if it exists. *)
 val rm_rf : string -> unit
 
-(** [with_scratch ~prefix f] runs [f dir] in a fresh scratch directory, removed
-    afterwards (also on exceptions). *)
+(** [with_scratch ~prefix f] runs [f dir] in a fresh private scratch directory,
+    removed afterwards (also on exceptions). *)
 val with_scratch : prefix:string -> (string -> 'a) -> 'a
 
 (** [contains ~sub s]: [sub] occurs in [s] (the empty string always does). *)

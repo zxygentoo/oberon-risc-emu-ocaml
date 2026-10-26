@@ -15,9 +15,18 @@ let shamt = G.int_range 0 31
 
 (* ---- helpers ------------------------------------------------------------- *)
 
+(* One machine for every case. Risc.make allocates the default 16 MiB of RAM, and
+   making one per case (thousands of them) was nearly the whole suite's runtime.
+   Each case starts from the state it relies on — PC 0, registers, H and flags
+   cleared — and writes any RAM it reads before reading it. *)
+let shared = lazy (Risc.make ())
+
 let make_cpu () =
-  let r = Risc.make () in
+  let r = Lazy.force shared in
   F.set_pc r 0;
+  Array.fill (F.regs r) 0 16 0;
+  F.set_h r 0;
+  F.set_flags r 0;
   r
 ;;
 
