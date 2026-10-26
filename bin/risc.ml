@@ -1,7 +1,7 @@
 (** The [risc] binary: parse the CLI and hand the validated config to {!App}. The
     window/event loop, machine wiring, and headless runner live in the frontend
     library ({!App}, {!Cli}, {!Ps2}, {!Render}); the pure machine — CPU, software FP,
-    MMIO, disk, serial, clipboard bridge — lives in {!Risc_core}. *)
+    MMIO, disk, serial, clipboard bridge — lives in {!Oberon_risc}. *)
 
 (* Exit codes as the host tools: 1 when the run fails, 2 for a usage error. *)
 let fail_with m =
@@ -15,7 +15,7 @@ let () =
     print_string Cli.usage;
     exit 0
   | Cli.Version ->
-    Printf.printf "risc %s\n" Risc_core.Version.version;
+    Printf.printf "risc %s\n" Oberon_risc.Version.version;
     exit 0
   | Cli.Invalid msg ->
     Printf.eprintf "risc: %s\nTry 'risc --help'.\n%!" msg;

@@ -1,10 +1,9 @@
 (* Property-based (QCheck) tests — the "oracle-free" set: algebraic laws,
    round-trips, and invariants that hold without a reference implementation. They
    complement the enumerated tests and the FP vectors by exploring the input
-   spaces randomly. *)
+   spaces randomly. The frontend's laws are in test_prop_frontend. *)
 
-open Risc_core
-open Tsdl
+open Oberon_risc
 module Q = QCheck2
 module G = QCheck2.Gen
 module F = Risc.For_tests
@@ -16,9 +15,18 @@ let shamt = G.int_range 0 31
 
 (* ---- helpers ------------------------------------------------------------- *)
 
+(* One machine for every case. Risc.make allocates the default 16 MiB of RAM, and
+   making one per case (thousands of them) was nearly the whole suite's runtime.
+   Each case starts from the state it relies on — PC 0, registers, H and flags
+   cleared — and writes any RAM it reads before reading it. *)
+let shared = lazy (Risc.make ())
+
 let make_cpu () =
-  let r = Risc.make () in
+  let r = Lazy.force shared in
   F.set_pc r 0;
+  Array.fill (F.regs r) 0 16 0;
+  F.set_h r 0;
+  F.set_flags r 0;
   r
 ;;
 
@@ -266,30 +274,6 @@ let pclink_props =
   ]
 ;;
 
-(* ---- Frontend: display scaling ------------------------------------------- *)
-
-let dim = G.int_range 64 4096
-
-let scale_props =
-  [ Q.Test.make
-      ~name:"scale_rect: fits, fills a dimension, centered"
-      ~count:1000
-      (G.tup4 dim dim dim dim)
-      (fun (ww, wh, tw, th) ->
-         let scale, r = Render.scale_rect ~win_w:ww ~win_h:wh ~tex_w:tw ~tex_h:th in
-         let rw = Sdl.Rect.w r
-         and rh = Sdl.Rect.h r in
-         scale > 0.0
-         && rw > 0
-         && rh > 0
-         && rw <= ww + 1
-         && rh <= wh + 1 (* fits in the window *)
-         && (rw >= ww - 1 || rh >= wh - 1) (* fills the limiting dimension *)
-         && abs ((2 * Sdl.Rect.x r) + rw - ww) <= 1 (* centered horizontally *)
-         && abs ((2 * Sdl.Rect.y r) + rh - wh) <= 1 (* centered vertically *))
-  ]
-;;
-
 (* ---- FP: metamorphic laws of the bit-exact model ------------------------- *)
 
 let fp_props =
@@ -312,13 +296,5 @@ let fp_props =
 
 let () =
   QCheck_base_runner.run_tests_main
-    (List.concat
-       [ u32_props
-       ; mem_props
-       ; cpu_props
-       ; disk_props
-       ; pclink_props
-       ; scale_props
-       ; fp_props
-       ])
+    (List.concat [ u32_props; mem_props; cpu_props; disk_props; pclink_props; fp_props ])
 ;;

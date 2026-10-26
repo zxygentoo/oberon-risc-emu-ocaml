@@ -1,7 +1,7 @@
 (** Read-only reader for the Project Oberon on-disk filesystem (port of
     [host_tools::image]). No emulator, no boot. *)
 
-open Risc_core
+open Oberon_risc
 
 (* Constants from FileDir.Mod. *)
 let sector_size = 1024

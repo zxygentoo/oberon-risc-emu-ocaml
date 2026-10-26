@@ -7,7 +7,7 @@
    See bench/README.md, including how to compare against the Rust port by timing
    the identical `--headless --frames` workload on both. *)
 
-open Risc_core
+open Oberon_risc
 
 let time_it f =
   let t0 = Unix.gettimeofday () in

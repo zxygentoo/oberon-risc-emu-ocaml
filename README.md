@@ -9,34 +9,49 @@ The whole machine — CPU, software floating point, MMIO, SD-card disk, serial, 
 clipboard — is a **bit-exact** port, verified against the C reference down to
 individual instructions (see [Verifying correctness](#verifying-correctness)).
 
+## Packages
+
+Three opam packages, released together at one version (see [`CHANGES.md`](CHANGES.md)
+and [Stability](#stability)):
+
+| Package | What | Needs |
+| --- | --- | --- |
+| `oberon-risc` | The machine as a library — module `Oberon_risc` | the OCaml distribution only |
+| `oberon-risc-emu` | The `risc` command (window, input, screenshots, headless runs) | SDL2, via `tsdl` and `imagelib` |
+| `oberon-risc-tools` | `ob2txt`, `txt2ob`, `extract-source`, `build-po-image`, `build-eo-image`; and `oat` (experimental) | `crunch` at build time |
+
 ## Requirements
 
-OCaml ≥ 5.1, dune ≥ 3, a C compiler, and the SDL2 system library. SDL2 comes
-from your OS package manager (e.g. `apt install libsdl2-dev`,
-`brew install sdl2`); the OCaml dependencies come from opam:
+OCaml ≥ 5.1, dune ≥ 3, and a C compiler; for `oberon-risc-emu`, the SDL2 system
+library, from your OS package manager (e.g. `apt install libsdl2-dev`,
+`brew install sdl2`). The OCaml dependencies come from opam:
 
 ```sh
-opam install . --deps-only --with-test
+opam install . --deps-only --with-test     # all three packages
+opam install ./oberon-risc.opam --deps-only --with-test   # just the core: no SDL
 ```
 
-This reads `oberon-risc-emu.opam` (generated from `dune-project`) and pulls in
-`tsdl` — which binds SDL2 — plus `imagelib`, which encodes screenshots as PNG,
-`crunch`, which embeds the host tools' toolchain assets at build time, and
-`qcheck-core`, which drives the property tests. The C compiler (already needed
-by `tsdl`) also builds `oat`'s serial-line stub and the vendored C reference
-for the `@cosim` tests.
+`tsdl` binds SDL2, `imagelib` encodes screenshots as PNG, `crunch` embeds the
+host tools' toolchain assets at build time, and `qcheck-core` drives the property
+tests. The C compiler builds `oat`'s serial-line stub and the vendored C
+reference for the `@cosim` tests.
+
+To install the commands from a checkout: `opam install .` (or one package, e.g.
+`opam install ./oberon-risc-tools.opam`).
 
 ## Build & run
 
 ```sh
 dune build
 
-# windowed (the disk image is modified in place, as on real hardware):
-dune exec bin/risc.exe -- DiskImage/Oberon-2020-08-18.dsk
+# windowed — the disk image is modified in place, as on real hardware, so boot
+# a copy if you want to keep the original (the bundled one is a test fixture):
+cp DiskImage/Oberon-2020-08-18.dsk my.dsk
+dune exec bin/risc.exe -- my.dsk
 
 # scale up, or go fullscreen:
-dune exec bin/risc.exe -- --zoom 2 DiskImage/Oberon-2020-08-18.dsk
-dune exec bin/risc.exe -- --fullscreen DiskImage/Oberon-2020-08-18.dsk
+dune exec bin/risc.exe -- --zoom 2 my.dsk
+dune exec bin/risc.exe -- --fullscreen my.dsk
 ```
 
 ### Options
@@ -212,8 +227,8 @@ dune exec bin/risc.exe -- --headless --frames 60 DiskImage/Oberon-2020-08-18.dsk
 # frames=60 framebuffer_fnv1a=0xb9bdbf56ba51298d state_fnv1a=0x66a3e6fd77a6b491 blank_words=21929/24576
 ```
 
-`validate/validate.exe` runs the same check without SDL, exercising only
-`risc_core`.
+`validate/validate.exe <disk-image> <frames>` runs the same check without SDL,
+exercising only the core library.
 
 ## Implementation notes
 
@@ -225,13 +240,20 @@ dune exec bin/risc.exe -- --headless --frames 60 DiskImage/Oberon-2020-08-18.dsk
 - **Rendering** follows the C frontend: a streaming ARGB texture refreshed only
   over the damaged region, scaled by SDL's renderer (not the Rust port's manual
   scaler).
-- **One intentional divergence** (from the Rust port): reading the CPU flags via
-  `MOV` returns the hardware's `0x53` id byte where the C emits `0xD0` — inert to
-  Oberon, which never reads it. See the Rust port's `DIVERGENCES.md`.
+- **Divergences from the C reference**, each deliberate:
+  - reading the CPU flags via `MOV` returns the hardware's `0x53` id byte where the C
+    emits `0xD0` — inert to Oberon, which never reads it (from the Rust port; see its
+    `DIVERGENCES.md`);
+  - the default machine has 16 MiB of RAM, with the boot ROM and framebuffer of the
+    1 MB board, so an address above 1 MB reaches RAM where the board would alias it
+    (see `lib/risc.mli`);
+  - a raw serial line at end of input reads as "no byte ready", where the C hands the
+    guest an endless run of ready NULs (see `lib/raw_serial.mli`);
+  - PCLink's transfer notes go to stderr, not stdout.
 
 ## Scope
 
-This port covers the emulator — the `risc_core` machine and the tsdl frontend —
+This port covers the emulator — the `Oberon_risc` machine and the tsdl frontend —
 the differential-lockstep harness, the Rust workspace's host tools (the text
 converters, the source extractor, and the two image builders with the headless
 shim runtime they drive; see [Host tools](#host-tools)), and the oberon-agent
@@ -239,6 +261,57 @@ workspace's `oat` client with its on-system modules and image pipeline (see
 [Driving a live system](#driving-a-live-system-oat)). Out of scope: the Rust
 dev tools (`eo-driver`, `eo-inner-run`), and full-boot lockstep (the 7-checkpoint
 boot golden already pins that path against the C-derived hashes).
+
+## Using the core from another project
+
+The core is the library `oberon-risc`; `Oberon_risc.Risc` is the machine,
+`Oberon_risc.Headless` the deterministic driver, `Oberon_risc.Risc5_isa` the
+instruction codec. Two ways in:
+
+- **opam**: `opam pin add oberon-risc https://github.com/zxygentoo/oberon-risc-emu-ocaml.git#v1.0.0`
+  and `(libraries oberon-risc)`.
+- **A git submodule, vendored by dune** — what oberon-risc-hardcaml does: in the
+  directory holding the submodule, `(vendored_dirs oberon-risc-emu-ocaml)`, then
+  `(libraries oberon-risc)`. Only the parts you use get built, so the SDL frontend
+  never is. To keep an existing module name, a two-line wrapper does it:
+
+  ```
+  ; emu/dune                            (* emu/emu.ml *)
+  (library (name emu)                   include Oberon_risc
+   (libraries oberon-risc))
+  ```
+
+Copying `lib/*.ml{,i}` into your own library also works, and keeps working through
+1.x (see [Stability](#stability)).
+
+## Stability
+
+From 1.0.0 the version follows [semantic versioning](https://semver.org): a
+breaking change to anything below bumps the major version, an addition the minor,
+a fix the patch.
+
+Covered:
+
+- **The `Oberon_risc` API** — every `.mli` in `lib/`, record types included (the
+  `Io` device records, `Risc.cpu_state`, `Risc.damage`), except `Risc.For_shim` and
+  `Risc.For_tests`.
+- **Bit-exact behaviour**: the bundled image's boot golden hashes (`dune test`, and
+  `risc --headless --frames`). A change to them is a major change.
+- **The commands** `risc`, `ob2txt`, `txt2ob`, `extract-source`, `build-po-image`,
+  `build-eo-image`: their options, output files and formats (the `.packonly`
+  manifest, the `--headless --frames` result line), and exit codes — 0 on success,
+  1 when the work fails, 2 for a usage error.
+- **Paths downstream scripts use**: `DiskImage/Oberon-2020-08-18.dsk`, the dune
+  targets `tools/bin/*.exe`, and the on-system modules `oat/Mod/Common/AgentProtocol.Mod`
+  and `oat/Mod/{ProjectOberon,ExtendedOberon}/{AgentTool.Mod,Oberon.Mod.patch}` —
+  their place, not their content.
+- **`lib/` as a directory**: flat, `.ml`/`.mli` only, depending on nothing but
+  `unix`, with no generated sources — so a project that copies it keeps building.
+
+Not covered: `oat` (its commands, output and wire protocol are an experiment, and
+may change in any release), `Risc.For_shim` / `Risc.For_tests`, the private
+libraries behind the commands, `bench/` and `validate/`, the Makefile's internals,
+and performance.
 
 ## Credits
 
@@ -249,8 +322,10 @@ boot golden already pins that path against the C-derived hashes).
 ## License
 
 ISC, matching upstream — see [`LICENSE`](LICENSE). The emulator derives from Peter
-De Wachter's `oberon-risc-emu` (© 2014, ISC); the bundled disk image and the
-vendored C reference are used under the same terms.
+De Wachter's `oberon-risc-emu` (© 2014, ISC). The repository also carries
+third-party material under its own terms — the vendored C reference, the Project
+Oberon 2013 disk image, the build toolchain assets; [`THIRD_PARTY.md`](THIRD_PARTY.md)
+lists each with its upstream and notice.
 
 [c]: https://github.com/pdewacht/oberon-risc-emu
 [rs]: https://github.com/zxygentoo/oberon-risc-emu-rs

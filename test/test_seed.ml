@@ -16,9 +16,9 @@ let check_seed tag (seed : Pipeline.seed) =
     (tag ^ "_golden_is_the_toolchain_innercore")
     (List.assoc "InnerCore" seed.toolchain = seed.golden_inner_core);
   (* The inner core parses as a record image and sets up the boot registers. *)
-  let r = Risc_core.Risc.make () in
-  Risc_core.Risc.For_shim.configure_shim r (8 * 1024 * 1024);
-  match Risc_core.Risc.For_shim.boot_inner_core r seed.golden_inner_core 0x8_0000 with
+  let r = Oberon_risc.Risc.make () in
+  Oberon_risc.Risc.For_shim.configure_shim r (8 * 1024 * 1024);
+  match Oberon_risc.Risc.For_shim.boot_inner_core r seed.golden_inner_core 0x8_0000 with
   | () -> check (tag ^ "_innercore_loads") true
   | exception Failure e -> check (Printf.sprintf "%s_innercore_loads (%s)" tag e) false
 ;;

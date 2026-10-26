@@ -5,9 +5,11 @@
  (name oberon_frontend)
  (modules ps2 render cli sdl_clipboard screenshot app)
  (wrapped false)
- (libraries risc_core tsdl imagelib unix))
+ (libraries oberon-risc tsdl imagelib unix))
 
 (executable
  (name risc)
+ (public_name risc)
+ (package oberon-risc-emu)
  (modules risc)
- (libraries oberon_frontend risc_core tsdl unix))
+ (libraries oberon_frontend oberon-risc tsdl unix))

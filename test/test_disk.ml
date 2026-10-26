@@ -1,7 +1,7 @@
 (* SD-card / SPI disk tests, ported from the Rust disk.rs tests. They drive the
-   disk through its public {!Risc_core.Io.spi} interface ([to_spi]). *)
+   disk through its public {!Oberon_risc.Io.spi} interface ([to_spi]). *)
 
-open Risc_core
+open Oberon_risc
 open Test_harness
 
 (* A throwaway image file containing [bytes]; caller removes it. *)

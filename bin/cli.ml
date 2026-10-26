@@ -189,8 +189,8 @@ let parse_argv raw_args =
       loop rest
   in
   loop (List.concat_map split_eq raw_args);
-  let width = ref Risc_core.Risc.default_screen_width in
-  let height = ref Risc_core.Risc.default_screen_height in
+  let width = ref Oberon_risc.Risc.default_screen_width in
+  let height = ref Oberon_risc.Risc.default_screen_height in
   (match !size with
    | Some s ->
      (match parse_size s with

@@ -5,7 +5,7 @@
 
    usage: validate <disk-image> <frames> *)
 
-open Risc_core
+open Oberon_risc
 
 let () =
   let src, frames =

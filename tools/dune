@@ -1,19 +1,21 @@
 ; Host-side Oberon tools shared library: the text converters, the .packonly
 ; manifest, the on-disk FS reader, and the disk-image build pipeline. Depends on
-; risc_core for the shim (Shim.run) and Oberon_name.
+; oberon-risc for the shim (Shim.run) and Oberon_name.
 
 (library
  (name oberon_tools)
- (libraries risc_core unix))
+ (libraries oberon-risc unix))
 
 ; Embed the vendored toolchain assets (bootstrap objects + host glue) as an OCaml
 ; module (Assets_data) via ocaml-crunch — the dune analogue of Rust's
 ; include_bytes!. `-m plain` stores the bytes uncompressed; the seeds look them
-; up by relative path (e.g. "po/bootstrap/InnerCore").
+; up by relative path (e.g. "po/bootstrap/InnerCore"). %{project_root}, not the
+; workspace root, so the rule still finds assets/ when this repo is vendored
+; inside another dune workspace.
 
 (rule
  (targets assets_data.ml)
  (deps
-  (source_tree %{workspace_root}/assets))
+  (source_tree %{project_root}/assets))
  (action
-  (run ocaml-crunch -m plain -s %{workspace_root}/assets -o assets_data.ml)))
+  (run ocaml-crunch -m plain -s %{project_root}/assets -o assets_data.ml)))

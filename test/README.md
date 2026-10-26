@@ -5,7 +5,9 @@ dune test
 ```
 
 runs everything portable: ~20,000 enumerated assertions plus thousands of
-randomized QCheck cases, in a few seconds. Each test is a plain executable —
+randomized QCheck cases, in about a second. Every test belongs to one of the three
+packages, so `dune build -p oberon-risc @runtest` (what opam runs for the core) needs
+no SDL. Each test is a plain executable —
 a failing check prints `FAIL: ...` and the run exits non-zero; the shared
 assert/summary helpers live in [`harness/`](harness/test_harness.mli).
 
@@ -30,10 +32,14 @@ What's in the default run:
   `pty_stubs.c`, `test_oat_tool_call` — the typed operations over an in-memory
   wire-typed fake, `test_oat_cli` — parsing and response rendering,
   `test_oat_error` — messages and exit codes).
+- **command-line contract** — `test_cli_contract` (the five host tools) and
+  `test_risc_cli_contract` run the built binaries: `--help`, `--version`, the
+  exit codes 0 / 1 / 2, and the converters' round trip and refusals.
 - **property tests** (QCheck) — `test_prop` (oracle-free laws: U32 algebra,
-  memory round-trips, the Z/N flag invariant, device round-trips) and
-  `test_risc5_isa` (codec round-trips, differential encode vs hand-rolled
-  golden encoders).
+  memory round-trips, the Z/N flag invariant, device round-trips, FP laws),
+  `test_prop_frontend` (display scaling) and `test_risc5_isa` (codec
+  round-trips, range checks, differential encode vs hand-rolled golden
+  encoders).
 
 ## Differential lockstep against the C reference (`@cosim`)
 

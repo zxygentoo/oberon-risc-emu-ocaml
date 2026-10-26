@@ -35,6 +35,14 @@ val read_file : string -> string
 (** Delete a file or directory tree if it exists. *)
 val rm_rf : string -> unit
 
-(** [with_scratch ~prefix f] runs [f dir] in a fresh scratch directory, removed
-    afterwards (also on exceptions). *)
+(** [with_scratch ~prefix f] runs [f dir] in a fresh private scratch directory,
+    removed afterwards (also on exceptions). *)
 val with_scratch : prefix:string -> (string -> 'a) -> 'a
+
+(** [contains ~sub s]: [sub] occurs in [s] (the empty string always does). *)
+val contains : sub:string -> string -> bool
+
+(** [run_exe ~cwd exe args] runs [exe] with [args] (stdin inherited, stdout and
+    stderr captured through files in [cwd]) and returns its exit code (-1 if it
+    did not exit normally), stdout and stderr. *)
+val run_exe : cwd:string -> string -> string list -> int * string * string

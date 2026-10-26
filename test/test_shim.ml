@@ -2,7 +2,7 @@
    validation, and the host file ABI driven directly (no CPU, no disk). The boot path is
    exercised end-to-end by the image-builder round-trip test. *)
 
-open Risc_core
+open Oberon_risc
 open Test_harness
 module M = Shim.For_tests
 

@@ -8,3 +8,7 @@ _build/
 build/
 DiskImage/ProjectOberon.dsk
 DiskImage/ExtendedOberon.dsk
+
+# risc screenshots (F10, --shot-frames) land in the working directory
+risc-shot*.png
+risc-shot*.png.tmp

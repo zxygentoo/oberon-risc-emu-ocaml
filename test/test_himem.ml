@@ -2,9 +2,9 @@
    0x100000 and up) behaves as plain memory — load, store, and execute — while
    the kernel-visible low megabyte, the framebuffer damage window, and the
    sign-extended MMIO top are unchanged. White-box access goes through
-   {!Risc_core.Risc.For_tests}, programs execute through the real dispatch. *)
+   {!Oberon_risc.Risc.For_tests}, programs execute through the real dispatch. *)
 
-open Risc_core
+open Oberon_risc
 open Test_harness
 module F = Risc.For_tests
 

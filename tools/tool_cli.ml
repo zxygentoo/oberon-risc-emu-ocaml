@@ -14,7 +14,7 @@ let parse ~name ~usage ~help ?(flags = []) args =
       print_string (usage ^ "\n\n" ^ help ^ "\n");
       exit 0
     | "--version" :: _ ->
-      Printf.printf "%s %s\n" name Risc_core.Version.version;
+      Printf.printf "%s %s\n" name Oberon_risc.Version.version;
       exit 0
     | arg :: rest when List.mem_assoc arg flags ->
       List.assoc arg flags := true;

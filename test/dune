@@ -1,4 +1,4 @@
-; Core tests (risc_core only) — including the vendored FP vectors and the boot
+; Core tests (oberon-risc only) — including the vendored FP vectors and the boot
 ; golden, which need their data files as deps.
 
 (tests
@@ -11,7 +11,8 @@
   test_raw_serial
   test_fp_vectors
   test_boot)
- (libraries risc_core unix test_harness)
+ (package oberon-risc)
+ (libraries oberon-risc unix test_harness)
  (deps data/fp_vectors.txt ../DiskImage/Oberon-2020-08-18.dsk))
 
 ; Frontend tests (the testable bin library + tsdl; no SDL_Init at runtime).
@@ -19,31 +20,34 @@
 
 (tests
  (names test_ps2 test_cli test_scale test_hotkeys test_screenshot)
- (libraries oberon_frontend risc_core tsdl imagelib test_harness))
+ (package oberon-risc-emu)
+ (libraries oberon_frontend oberon-risc tsdl imagelib test_harness))
 
 ; Instruction-codec tests (QCheck) — the shared Risc5_isa encode/decode + the
 ; differential check of encode against the hand-rolled golden encoders.
 
 (test
  (name test_risc5_isa)
- (libraries risc_core qcheck-core qcheck-core.runner)
+ (package oberon-risc)
+ (libraries oberon-risc qcheck-core qcheck-core.runner)
  ; dune doesn't track env vars by default; without this a cached success would
  ; ignore a later QCHECK_SEED.
  (deps
   (env_var QCHECK_SEED)))
 
-; Property-based tests (QCheck) — spans the core and frontend.
+; Property-based tests (QCheck): the core's laws, and the frontend's display scaling.
 
 (test
  (name test_prop)
- (libraries
-  risc_core
-  oberon_frontend
-  tsdl
-  unix
-  qcheck-core
-  qcheck-core.runner
-  test_harness)
+ (package oberon-risc)
+ (libraries oberon-risc unix qcheck-core qcheck-core.runner test_harness)
+ (deps
+  (env_var QCHECK_SEED)))
+
+(test
+ (name test_prop_frontend)
+ (package oberon-risc-emu)
+ (libraries oberon_frontend tsdl qcheck-core qcheck-core.runner)
  (deps
   (env_var QCHECK_SEED)))
 
@@ -58,21 +62,28 @@
   test_resolve
   test_tool_cli
   test_fsutil)
+ (package oberon-risc-tools)
  (libraries oberon_tools test_harness))
 
 ; The executables' command-line contract (--help, --version, exit codes 0/1/2), run
-; end to end against the built binaries.
+; end to end against the built binaries — the tools, and risc.
 
 (test
  (name test_cli_contract)
- (libraries risc_core unix test_harness)
+ (package oberon-risc-tools)
+ (libraries oberon-risc unix test_harness)
  (deps
-  ../bin/risc.exe
   ../tools/bin/ob2txt.exe
   ../tools/bin/txt2ob.exe
   ../tools/bin/extract_source.exe
   ../tools/bin/build_po_image.exe
   ../tools/bin/build_eo_image.exe))
+
+(test
+ (name test_risc_cli_contract)
+ (package oberon-risc-emu)
+ (libraries oberon-risc unix test_harness)
+ (deps ../bin/risc.exe))
 
 ; oat tests (the serial client for AgentTool.Mod): the wire codec + retry
 ; policy + full exchanges over host pipes (io), the byte channel over host
@@ -84,40 +95,46 @@
 
 (tests
  (names test_oat_io test_oat_tool_call test_oat_cli test_oat_error)
+ (package oberon-risc-tools)
  (libraries oat unix test_harness))
 
 ; pty_stubs.c is test-only C around posix_openpt.
 
 (test
  (name test_oat_device)
+ (package oberon-risc-tools)
  (libraries oat unix test_harness)
  (foreign_stubs
   (language c)
   (names pty_stubs)))
 
-; Embedded-seed structural checks (risc_core for boot_inner_core).
+; Embedded-seed structural checks (oberon-risc for boot_inner_core).
 
 (test
  (name test_seed)
- (libraries oberon_tools risc_core test_harness))
+ (package oberon-risc-tools)
+ (libraries oberon_tools oberon-risc test_harness))
 
 ; Pipeline filesystem-helper tests (need unix for mkdir/getpid).
 
 (test
  (name test_pipeline)
+ (package oberon-risc-tools)
  (libraries oberon_tools unix test_harness))
 
 ; Shim ABI unit tests.
 
 (test
  (name test_shim)
- (libraries risc_core test_harness))
+ (package oberon-risc)
+ (libraries oberon-risc test_harness))
 
 ; End-to-end image-builder round-trip (opt-in: self-skips unless OBERON_ROUNDTRIP
 ; is set, since it boots the shim and compiles the whole system).
 
 (test
  (name test_build_roundtrip)
+ (package oberon-risc-tools)
  (libraries oberon_tools unix)
  ; env_var: without it, dune's cached "skipped" success would replay even when
  ; OBERON_ROUNDTRIP=1 is set later, silently never running the roundtrip.

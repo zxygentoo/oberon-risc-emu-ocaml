@@ -7,7 +7,7 @@
     gentler on 1-bit text than nearest-neighbour). *)
 
 open Tsdl
-module Core = Risc_core.Risc
+module Core = Oberon_risc.Risc
 
 (* Solarized "off"/"on" colours used by the C frontend (ARGB, alpha ignored by
    the default BLENDMODE_NONE copy). *)

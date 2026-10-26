@@ -184,7 +184,7 @@ let max_file_bytes = ((64 + (12 * 256)) * 1024) - 352
    objects included: an unbootable image from a build that reports success. *)
 let check_installable sources visible =
   let bad_names =
-    List.filter (fun n -> not (Risc_core.Oberon_name.file_name_ok n)) visible
+    List.filter (fun n -> not (Oberon_risc.Oberon_name.file_name_ok n)) visible
   in
   if bad_names <> []
   then
@@ -192,7 +192,7 @@ let check_installable sources visible =
       (Printf.sprintf
          "not valid Oberon file names (a letter, then letters, digits or dots; at most \
           %d bytes): %s"
-         Risc_core.Oberon_name.max_length
+         Oberon_risc.Oberon_name.max_length
          (String.concat ", " bad_names));
   List.iter
     (fun name ->

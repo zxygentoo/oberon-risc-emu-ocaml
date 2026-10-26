@@ -18,6 +18,6 @@ let () =
   check "lone_dash_positional" (parse [ "-" ] = [ "-" ]);
   (* run_reporting passes through f's value on success. *)
   eq "run_reporting_value" (Tool_cli.run_reporting ~name:"t" (fun () -> 42)) 42;
-  check "version_nonempty" (Risc_core.Version.version <> "");
+  check "version_nonempty" (Oberon_risc.Version.version <> "");
   summary "tool_cli checks"
 ;;

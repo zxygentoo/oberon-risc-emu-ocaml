@@ -12,13 +12,13 @@ type t
 
 (** The native [(width, height)] in pixels of the machine's framebuffer
     (32 pixels per framebuffer word). *)
-val texture_size : Risc_core.Risc.t -> int * int
+val texture_size : Oberon_risc.Risc.t -> int * int
 
 (** Create the streaming ARGB texture sized to the machine's framebuffer. *)
-val create : Sdl.renderer -> Risc_core.Risc.t -> t
+val create : Sdl.renderer -> Oberon_risc.Risc.t -> t
 
 (** Refresh the texture from the framebuffer's damaged region. *)
-val update : t -> Risc_core.Risc.t -> unit
+val update : t -> Oberon_risc.Risc.t -> unit
 
 (** [scale_rect ~win_w ~win_h ~tex_w ~tex_h] — centered, aspect-preserving
     placement (pure; no SDL window needed); returns the scale factor and the
