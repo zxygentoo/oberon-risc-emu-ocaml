@@ -16,8 +16,9 @@ What's in the default run:
 - **boot golden** (`test_boot`) — one continuous deterministic 60 Hz boot of the
   bundled image, with the framebuffer + CPU-state FNV-1a hashes checked against
   the frozen C/Rust values at 7 checkpoints (frames 1–250).
-- **FP vectors** (`test_fp_vectors`) — all 19,760 C-derived vectors replayed
-  through the software FP/idiv for bit-identical output.
+- **FP vectors** (`test_fp_vectors`) — all 15,608 C-derived vectors replayed
+  through the software FP/idiv for bit-identical output (19,760 checks: integer
+  division checks quotient and remainder).
 - **per-module unit tests** — CPU and memory map (`test_risc`, `test_himem`),
   devices (`test_disk`, `test_pclink`, `test_clipboard`, `test_raw_serial`),
   the shim ABI (`test_shim`), frontend (`test_ps2`, `test_cli`, `test_scale`,
