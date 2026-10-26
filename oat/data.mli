@@ -60,12 +60,24 @@ module Wire : sig
       {!Tool_call}'s edit falls back to the GET+PUT path for anything longer. *)
   val edit_old_limit : int
 
-  (** Largest PUT payload (in device bytes) the device accepts — its receive
-      buffer size. Keep in sync with [maxPut] in
-      [oat/Mod/Common/AgentProtocol.Mod]. {!Tool_call}'s write rejects longer
-      content host-side ([Put_too_large]) instead of streaming a payload the
-      device will refuse with an opaque status. *)
+  (** Largest payload (in device bytes) the device accepts — PUT data, CALL par,
+      EDIT NEW all land in one receive buffer of this size. Keep in sync with
+      [maxPut] in [oat/Mod/Common/AgentProtocol.Mod]. {!Io} refuses a longer one
+      at encode time ([Put_too_large]) instead of streaming a payload the device
+      will refuse with an opaque status. *)
   val put_limit : int
+
+  (** Longest name (file or [Mod.Proc] command, in bytes) a request may carry —
+      the device holds names in [ARRAY 64 OF CHAR]. Keep in sync with
+      [AgentProtocol.Mod]. {!Io} refuses a longer one at encode time
+      ([Bad_name]). *)
+  val name_limit : int
+
+  (** Largest RESPONSE payload {!Io} accepts. Nothing honest comes close: a GET
+      is at most one file (PO and EO cap a file at about 3.1 MB), and a Log delta
+      lives in RAM (at most 32 MB on the emulator, 1 MB on the board). A length
+      past it is a corrupt frame, refused ([Bad_length]) rather than allocated. *)
+  val response_limit : int
 
   (** The wire itself: one REQUEST in, one RESPONSE back. [Io.send device] is
       the production implementation; the tool_call tests plug in an in-memory

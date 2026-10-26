@@ -60,6 +60,8 @@ module Wire = struct
 
   let edit_old_limit = 1024
   let put_limit = 0x10000
+  let name_limit = 63
+  let response_limit = 32 lsl 20
 
   type t = request -> response
 end

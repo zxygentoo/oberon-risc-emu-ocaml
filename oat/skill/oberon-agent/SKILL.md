@@ -298,9 +298,10 @@ END M.
 
 - **Names.** A file name must be a letter followed by letters, digits and dots, at
   most 31 bytes (`a_b.txt` and `dir/x.txt` are not valid), and no file name or
-  `Mod.Proc` command may exceed 63 bytes. Break either rule and the device does not
-  answer at all — a `write` to an invalid name, or any command with an over-long
-  one, ends in "no response": that is this limitation, not a dead link.
+  `Mod.Proc` command may exceed 63 bytes. `oat` refuses an over-long name before
+  sending anything (exit 2, "name length … out of range"), and the device refuses
+  a `write` to an invalid name (exit 1, "device refused to create …"); a `read`
+  or `edit` of one is simply "file not found".
 
 - **Compile/load cycle.** `compile` produces a `.rsc`; `load` brings it into memory.
   To put new code into effect: `compile` (use `-s` when the exported interface

@@ -18,7 +18,9 @@ type config =
         or 2 for [check] on a real serial device, so a dead link fails fast. *)
   ; baud : int (** Real serial device only; ignored for FIFO pairs. *)
   ; char_delay_us : int (** Real serial device only; ignored for FIFO pairs. *)
-  ; retries : int (** Real serial device only; the FIFO path never retries. *)
+  ; retries : int
+    (** Real serial device only, and only for operations safe to re-send; the
+        FIFO path never retries. *)
   ; serial : serial option
   ; command : Data.request
     (** For [Write], parsed with [content = ""]; {!run} fills it from stdin. *)
@@ -53,4 +55,9 @@ module For_tests : sig
   (** The read timeout {!run} uses: [--timeout] when given, else the default for
       this command and connection. *)
   val effective_timeout : config -> float
+
+  (** The retry budget {!run} gives {!Io.send}: [--retries] on a real serial
+      device for an operation a re-send can't run twice (reads, listings,
+      check, write, compile, load); 0 otherwise. *)
+  val effective_retries : config -> int
 end

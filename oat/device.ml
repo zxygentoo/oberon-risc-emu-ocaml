@@ -64,16 +64,33 @@ let recv t buf =
   go 0
 ;;
 
-(* Write s[pos .. pos+len-1] in full, straight from the string (no copy). *)
-let write_all fd s ~pos ~len =
+let rec poll_writable fd timeout =
+  match Unix.select [] [ fd ] [] timeout with
+  | _, w, _ -> w <> []
+  | exception Unix.Unix_error (Unix.EINTR, _, _) -> poll_writable fd timeout
+;;
+
+(* Write frame[pos .. pos+len-1] in full, straight from the string (no copy). A
+   peer that takes no byte for [t.timeout] fails the send rather than blocking
+   it forever: once a FIFO's buffer is full, nothing drains it while the
+   emulator is gone or Oberon is too busy to poll the line. The FIFO writer is
+   non-blocking (see [open_fifos]), so a write takes what fits and returns. *)
+let write_all t fd frame ~pos ~len =
   let rec go written =
     if written < len
-    then (
-      match Unix.write_substring fd s (pos + written) (len - written) with
-      | w -> go (written + w)
-      | exception Unix.Unix_error (Unix.EINTR, _, _) -> go written
-      | exception Unix.Unix_error (e, _, _) ->
-        Error.fail (Error.Io (Unix.error_message e)))
+    then
+      if not (poll_writable fd t.timeout)
+      then
+        Error.fail
+          (Error.Send_timeout
+             { secs = t.timeout; sent = pos + written; total = String.length frame })
+      else (
+        match Unix.write_substring fd frame (pos + written) (len - written) with
+        | w -> go (written + w)
+        | exception Unix.Unix_error ((Unix.EINTR | Unix.EAGAIN | Unix.EWOULDBLOCK), _, _)
+          -> go written
+        | exception Unix.Unix_error (e, _, _) ->
+          Error.fail (Error.Io (Unix.error_message e)))
   in
   go 0
 ;;
@@ -81,13 +98,13 @@ let write_all fd s ~pos ~len =
 let send t frame =
   let w = Option.value t.writer ~default:t.reader in
   if t.char_delay = 0.0
-  then write_all w frame ~pos:0 ~len:(String.length frame)
+  then write_all t w frame ~pos:0 ~len:(String.length frame)
   else
     (* One byte at a time, idling the wire between them so the device's cooperative
        poll can grab each byte. Slow but lossless on a raw UART. *)
     String.iteri
       (fun i _ ->
-         write_all w frame ~pos:i ~len:1;
+         write_all t w frame ~pos:i ~len:1;
          Unix.sleepf t.char_delay)
       frame
 ;;
@@ -99,9 +116,12 @@ let open_fifo path =
   | Unix.Unix_error (err, _, _) -> Error.fail (Error.Open_fifo { path; err })
 ;;
 
+(* The writer goes non-blocking so a stalled peer surfaces as [Send_timeout]
+   (see [write_all]); reads already wait in [select]. *)
 let open_fifos ~in_path ~out_path ~timeout =
   let writer = open_fifo in_path in
   let reader = open_fifo out_path in
+  Unix.set_nonblock writer;
   { reader; writer = Some writer; timeout; char_delay = 0.0; line = None }
 ;;
 
@@ -151,6 +171,7 @@ let open_device path ~timeout ~baud ~char_delay =
 
 module For_tests = struct
   let make ~reader ~writer ~timeout ~char_delay =
+    Option.iter Unix.set_nonblock writer;
     { reader; writer; timeout; char_delay; line = None }
   ;;
 

@@ -91,6 +91,24 @@ let () =
     [ "--serial-in"; "a"; "--serial-out"; "b"; "check" ]
     15.0;
   timeout_of "timeout_explicit_wins" [ "--serial"; "p"; "--timeout"; "30"; "check" ] 30.0;
+  (* The retry budget: --retries on a real serial device, but only for
+     operations a re-send can't run twice; never on FIFOs. *)
+  let retries_of name args want =
+    config name args (fun c -> Cli.For_tests.effective_retries c = want)
+  in
+  let serial = [ "--serial"; "p"; "--retries"; "5" ] in
+  retries_of "retries_check_serial" (serial @ [ "check" ]) 5;
+  retries_of "retries_read_serial" (serial @ [ "read"; "F" ]) 5;
+  retries_of "retries_write_serial" (serial @ [ "write"; "F" ]) 5;
+  retries_of "retries_compile_serial" (serial @ [ "compile"; "M.Mod" ]) 5;
+  retries_of "no_retries_call_serial" (serial @ [ "call"; "M.P" ]) 0;
+  retries_of "no_retries_edit_serial" (serial @ [ "edit"; "F"; "a"; "b" ]) 0;
+  retries_of "no_retries_delete_serial" (serial @ [ "delete"; "F" ]) 0;
+  retries_of "no_retries_unload_serial" (serial @ [ "unload"; "M" ]) 0;
+  retries_of
+    "no_retries_fifos"
+    [ "--serial-in"; "a"; "--serial-out"; "b"; "--retries"; "5"; "read"; "F" ]
+    0;
   invalid "bad_timeout" [ "--timeout"; "abc"; "check" ];
   invalid "negative_retries" [ "--retries"; "-1"; "check" ];
   invalid "missing_value" [ "check"; "--timeout" ];

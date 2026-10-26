@@ -2,8 +2,9 @@
 # Live integration test: boot IMAGE in the emulator (headless, no display
 # needed) on a private FIFO pair and drive the full oat surface against the
 # running system — write/read/edit (wire path, fallback path, error statuses),
-# a write at the 64 KiB PUT limit, compile, call, list, delete, and on Extended
-# Oberon a full edit -> compile -> unload -> reload hot swap.
+# a write at the 64 KiB PUT limit, the wire's bounds (over-long names, invalid
+# names, long payloads, a shrinking Log), compile, call, list, delete, and on
+# Extended Oberon a full edit -> compile -> unload -> reload hot swap.
 #
 # Usage: test/integration.sh IMAGE [RISC [OAT]]
 
@@ -172,6 +173,74 @@ else
     bad "64 KiB round-trips byte-identical" "$(cat "$T/err")"
 fi
 
+# --- wire bounds ----------------------------------------------------------------
+# A name longer than the device's 64-byte buffer used to trap it mid-frame, so the
+# rest of the frame was parsed as fresh requests: a payload carrying a frame
+# became a real PUT. oat refuses such names now, so this frame goes in raw. The
+# device must consume it whole and refuse it — Evil1 must not appear.
+
+{
+    printf '\xA5\x01\x64'                          # PUT, a 100-byte name
+    printf 'N%.0s' $(seq 100)
+    printf '\x11\x00\x00\x00'                      # 17-byte payload: a PUT frame
+    printf '\xA5\x01\x05Evil1\x05\x00\x00\x00hello'
+} >"$T/p.in"
+sleep 1                                            # let the refusal land; oat drains it
+expect_err "over-long name: frame consumed whole, no phantom PUT" "file not found" \
+    oat read Evil1
+expect_ok "wire alive after the over-long name" oat check
+
+# stdin via <<<, not a pipe: a pipe would run expect_err in a subshell and lose
+# its pass/fail count.
+expect_err "write to an invalid name is refused, exit 1" \
+    "device refused to create" oat write bad-name.Txt <<<'x'
+
+# Payloads now reach RAM before any file is touched; past 672 bytes a Texts
+# writer would hit the disk mid-receive. (Lossless here, so this pins the path,
+# not the overrun.) Echo.Par copies its parameter text to the Log; Echo.Shrink
+# deletes the whole Log, which used to make the reply length negative.
+oat write Echo.Mod <<'EOF' >/dev/null
+MODULE Echo;
+  IMPORT Texts, Oberon;
+  VAR W: Texts.Writer;
+  PROCEDURE Par*;
+    VAR R: Texts.Reader; ch: CHAR;
+  BEGIN Texts.OpenReader(R, Oberon.Par.text, Oberon.Par.pos); Texts.Read(R, ch);
+    WHILE ~R.eot DO Texts.Write(W, ch); Texts.Read(R, ch) END;
+    Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf)
+  END Par;
+  PROCEDURE Shrink*;
+    VAR B: Texts.Buffer;
+  BEGIN NEW(B); Texts.OpenBuf(B); Texts.Delete(Oberon.Log, 0, Oberon.Log.len, B);
+    Texts.WriteString(W, "shrunk"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf)
+  END Shrink;
+BEGIN Texts.OpenWriter(W)
+END Echo.
+EOF
+expect_ok "compile Echo.Mod" oat compile Echo.Mod
+
+long=$(printf '%.0sabcdefghij' $(seq 200))         # 2000 bytes, one line
+if out=$(oat call Echo.Par "$long" 2>&1) && grep -qF "$long" <<<"$out"; then
+    ok "call: 2000-byte par arrives intact"
+else
+    bad "call: 2000-byte par arrives intact" "$(head -c 300 <<<"$out")"
+fi
+
+if out=$(oat call Echo.Shrink 2>&1) && grep -q "shrunk" <<<"$out"; then
+    ok "call that empties the Log: reply carries the new Log"
+else
+    bad "call that empties the Log: reply carries the new Log" "$out"
+fi
+expect_ok "wire alive after the Log shrank" oat check
+
+printf 'head\nMARK\ntail\n' | oat write Long.Txt >/dev/null
+expect_ok "edit: 2000-byte NEW" oat edit Long.Txt MARK "$long"
+expect_content "2000-byte NEW applied" Long.Txt <<EOF
+head
+$long
+tail
+EOF
+
 # --- compile / call / list ------------------------------------------------------
 
 expect_ok "compile Itest.Mod" oat compile Itest.Mod
@@ -253,6 +322,8 @@ expect_ok "delete Dup.Txt" oat delete Dup.Txt
 expect_ok "delete Big.Txt" oat delete Big.Txt
 expect_ok "delete Full.Txt" oat delete Full.Txt
 expect_ok "delete Crash.Mod" oat delete Crash.Mod
+expect_ok "delete Echo.Mod" oat delete Echo.Mod
+expect_ok "delete Long.Txt" oat delete Long.Txt
 expect_err "read deleted file -> exit 1" "file not found" oat read Itest.Mod
 
 # --- summary ---------------------------------------------------------------------

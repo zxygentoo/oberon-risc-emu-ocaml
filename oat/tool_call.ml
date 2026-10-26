@@ -79,13 +79,14 @@ let read_file (wire : Wire.t) path =
   | s -> bad_status s
 ;;
 
+(* Over-long content never leaves the host ({!Io} refuses it at encode time), so
+   an Error status is the name: Files.New refused it. *)
 let write_file (wire : Wire.t) ~path ~content =
-  let data = to_oberon content in
-  if String.length data > Wire.put_limit
-  then
-    Error.fail
-      (Error.Put_too_large { bytes = String.length data; limit = Wire.put_limit });
-  check_ok (wire (Wire.Put { name = path; data }))
+  let r = wire (Wire.Put { name = path; data = to_oberon content }) in
+  match r.status with
+  | Wire.Ok -> ()
+  | Wire.Error -> Error.fail (Error.Write_refused path)
+  | s -> bad_status s
 ;;
 
 (* Fallback for fragments EDIT cannot carry: full read-modify-write through GET and

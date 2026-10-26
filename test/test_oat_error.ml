@@ -23,8 +23,14 @@ let () =
   (* Transport / protocol / argument errors -> 2. *)
   eq "no_serial_is_2" (Error.exit_code Error.No_serial) 2;
   eq "eof_is_2" (Error.exit_code Error.Eof) 2;
-  eq "bad_name_is_2" (Error.exit_code (Error.Bad_name "")) 2;
+  eq "write_refused_is_1" (Error.exit_code (Error.Write_refused "a-b.Txt")) 1;
+  eq "bad_name_is_2" (Error.exit_code (Error.Bad_name { name = ""; limit = 63 })) 2;
   eq "timeout_is_2" (Error.exit_code (Error.Timeout { secs = 1.0; got = 0; want = 1 })) 2;
+  eq
+    "send_timeout_is_2"
+    (Error.exit_code (Error.Send_timeout { secs = 1.0; sent = 0; total = 9 }))
+    2;
+  eq "bad_length_is_2" (Error.exit_code (Error.Bad_length { length = 9; limit = 1 })) 2;
   (* load-failed carries the res code, its hint, and the log indented under it. *)
   let msg =
     Error.message (Error.Load_failed { res = Some 2; log = "AgentTool.Load\nres=2\n" })

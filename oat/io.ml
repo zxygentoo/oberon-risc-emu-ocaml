@@ -17,23 +17,31 @@ let le32 n =
   Bytes.unsafe_to_string b
 ;;
 
-(* 1-byte length prefix, then the chars; 1..255 bytes. *)
+(* 1-byte length prefix, then the chars; 1..name_limit bytes — the device's name
+   buffer, not the prefix's 255, is the bound. *)
 let name_field name =
   let len = String.length name in
-  if len = 0 || len > 255 then Error.fail (Error.Bad_name name);
+  if len = 0 || len > Wire.name_limit
+  then Error.fail (Error.Bad_name { name; limit = Wire.name_limit });
   byte len ^ name
+;;
+
+(* u32 length, then the bytes; at most put_limit, the device's receive buffer.
+   EDIT's OLD is not one of these: the device keeps its first edit_old_limit
+   bytes and drains the rest, and Tool_call never sends a longer one. *)
+let payload_field data =
+  let len = String.length data in
+  if len > Wire.put_limit
+  then Error.fail (Error.Put_too_large { bytes = len; limit = Wire.put_limit });
+  le32 len ^ data
 ;;
 
 let encode_request = function
   | Wire.Put { name; data } ->
-    String.concat
-      ""
-      [ byte sync_req; byte op_put; name_field name; le32 (String.length data); data ]
+    String.concat "" [ byte sync_req; byte op_put; name_field name; payload_field data ]
   | Wire.Get { name } -> String.concat "" [ byte sync_req; byte op_get; name_field name ]
   | Wire.Call { cmd; par } ->
-    String.concat
-      ""
-      [ byte sync_req; byte op_call; name_field cmd; le32 (String.length par); par ]
+    String.concat "" [ byte sync_req; byte op_call; name_field cmd; payload_field par ]
   | Wire.Edit { name; old; new_ } ->
     String.concat
       ""
@@ -42,8 +50,7 @@ let encode_request = function
       ; name_field name
       ; le32 (String.length old)
       ; old
-      ; le32 (String.length new_)
-      ; new_
+      ; payload_field new_
       ]
 ;;
 
@@ -60,6 +67,8 @@ let read_response recv =
   let len = Bytes.create 4 in
   recv len;
   let length = U32.get_le (Bytes.unsafe_to_string len) 0 in
+  if length > Wire.response_limit
+  then Error.fail (Error.Bad_length { length; limit = Wire.response_limit });
   let payload = Bytes.create length in
   if length > 0 then recv payload;
   { Wire.status = Wire.status_of_byte status; payload = Bytes.unsafe_to_string payload }

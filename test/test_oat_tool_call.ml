@@ -122,14 +122,25 @@ let dispatch_edit fake name old new_ =
        | count, _ -> { Wire.status = Wire.Not_unique; payload = le32 count }))
 ;;
 
+(* Files.Check's grammar: a letter, then letters, digits or dots; at most 31. *)
+let valid_file_name name =
+  let letter c = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') in
+  let rest c = letter c || (c >= '0' && c <= '9') || c = '.' in
+  name <> "" && String.length name <= 31 && letter name.[0] && String.for_all rest name
+;;
+
 let wire_of fake : Wire.t = function
   | Wire.Get { name } ->
     (match Hashtbl.find_opt fake.files name with
      | Some data -> { Wire.status = Wire.Ok; payload = data }
      | None -> { Wire.status = Wire.Not_found; payload = "" })
   | Wire.Put { name; data } ->
-    Hashtbl.replace fake.files name data;
-    { Wire.status = Wire.Ok; payload = "" }
+    (* Mirrors DoPut: a name Files.New refuses gets Error, nothing written. *)
+    if valid_file_name name
+    then (
+      Hashtbl.replace fake.files name data;
+      { Wire.status = Wire.Ok; payload = "" })
+    else { Wire.status = Wire.Error; payload = "" }
   | Wire.Call { cmd; par } ->
     let status, payload = dispatch_call fake cmd par in
     { Wire.status; payload }
@@ -169,15 +180,17 @@ let () =
   write w "Acc.Txt" "caf\xC3\xA9\n";
   eqs "latin1_fold_on_device" (Hashtbl.find w.files "Acc.Txt") "caf\xE9\r";
   eqs "latin1_fold_roundtrip" (read w "Acc.Txt") "caf\xC3\xA9\n";
-  (* An over-limit PUT is refused host-side, before any wire traffic. *)
+  (* A name the device's Files.New refuses comes back as a tool-level refusal
+     naming the file, not as an opaque status. (Over-limit content never gets
+     this far: Io refuses it at encode time — test_oat_io.) *)
   let w = new_fake () in
   expect_error
-    "write_over_put_limit"
+    "write_bad_name_refused"
     (function
-      | Error.Put_too_large { bytes = 70000; limit } -> limit = Wire.put_limit
+      | Error.Write_refused "bad-name.Txt" -> true
       | _ -> false)
-    (fun () -> write w "Big.Txt" (String.make 70000 'x'));
-  check "write_over_put_limit_untransmitted" (not (Hashtbl.mem w.files "Big.Txt"));
+    (fun () -> write w "bad-name.Txt" "x\n");
+  check "write_bad_name_nothing_stored" (Hashtbl.length w.files = 0);
   expect_error
     "read_missing_not_found"
     (function

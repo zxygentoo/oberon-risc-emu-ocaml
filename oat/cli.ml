@@ -65,7 +65,9 @@ let usage =
     \  --char-delay-us US   Inter-byte delay for a real serial device (--serial), in\n\
     \                       microseconds; ignored for FIFOs [default: %d]\n\
     \  --retries N          Re-send a request this many times if it desyncs on a real\n\
-    \                       serial device (--serial); ignored for FIFOs [default: %d]\n\
+    \                       serial device (--serial); ignored for FIFOs, and for\n\
+    \                       edit/delete/unload/call, which a re-send could run twice\n\
+    \                       [default: %d]\n\
     \  -h, --help           Print help\n\
     \  --version            Print version\n\n\
      Serial connection (one form required):\n\
@@ -275,23 +277,44 @@ let effective_timeout cfg =
   | None, _, _ -> default_timeout
 ;;
 
+(* A re-send recovers a desync, but a timeout or a garbled reply can also follow
+   a device that already acted (see Io.send), and then the operation runs twice.
+   So only operations a second run can't change are retried: the reads and
+   listings, check, write (the same bytes again), compile and load (the same
+   source, the same result). *)
+let replay_safe : Data.request -> bool = function
+  | Data.Check
+  | Data.Read _
+  | Data.Write _
+  | Data.List_files _
+  | Data.List_modules
+  | Data.Compile _
+  | Data.Load _ -> true
+  | Data.Edit _ | Data.Delete _ | Data.Unload _ | Data.Call _ -> false
+;;
+
+(* Retry only the lossy real-serial path. The FIFO/emulator channel is lossless
+   and back-pressured, so a timeout there is a genuine hang — pass it straight
+   through rather than waiting out N more timeouts. *)
+let effective_retries cfg =
+  match cfg.serial with
+  | Some (Device _) when replay_safe cfg.command -> cfg.retries
+  | _ -> 0
+;;
+
 let run cfg =
   let timeout = Float.max (effective_timeout cfg) 0.001 in
-  (* Retry only the lossy real-serial path. The FIFO/emulator channel is lossless
-     and back-pressured, so a timeout there is a genuine hang — pass it straight
-     through rather than waiting out N more timeouts. *)
-  let device, retries =
+  let device =
     match cfg.serial with
     | None -> Error.fail Error.No_serial
     | Some (Device path) ->
-      ( Device.open_device
-          path
-          ~timeout
-          ~baud:cfg.baud
-          ~char_delay:(float_of_int cfg.char_delay_us /. 1_000_000.0)
-      , cfg.retries )
+      Device.open_device
+        path
+        ~timeout
+        ~baud:cfg.baud
+        ~char_delay:(float_of_int cfg.char_delay_us /. 1_000_000.0)
     | Some (Fifos { fifo_in; fifo_out }) ->
-      Device.open_fifos ~in_path:fifo_in ~out_path:fifo_out ~timeout, 0
+      Device.open_fifos ~in_path:fifo_in ~out_path:fifo_out ~timeout
   in
   let request =
     match cfg.command with
@@ -306,10 +329,11 @@ let run cfg =
       Data.Write { path; content }
     | request -> request
   in
-  render (Tool_call.execute (Io.send device ~retries) request)
+  render (Tool_call.execute (Io.send device ~retries:(effective_retries cfg)) request)
 ;;
 
 module For_tests = struct
   let render = render
   let effective_timeout = effective_timeout
+  let effective_retries = effective_retries
 end

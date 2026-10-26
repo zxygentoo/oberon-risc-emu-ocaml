@@ -7,10 +7,15 @@
 
 type t =
   | No_serial
-  | Bad_name of string (** A wire name whose length is outside 1..255 bytes. *)
+  | Bad_name of
+      { name : string
+      ; limit : int (** {!Data.Wire.name_limit}. *)
+      } (** A wire name whose length is outside 1..[limit] bytes. *)
   | Put_too_large of
       { bytes : int
-      ; limit : int (** {!Data.Wire.put_limit}, the device's PUT buffer size. *)
+      ; limit : int
+        (** {!Data.Wire.put_limit}, the device's receive buffer size (PUT data,
+            CALL par, EDIT NEW). *)
       }
   | Open_fifo of
       { path : string
@@ -47,13 +52,24 @@ type t =
       ; got : int
       ; want : int
       }
+  | Send_timeout of
+      { secs : float
+      ; sent : int
+      ; total : int
+      } (** The device stopped taking request bytes for [secs]. *)
   | Eof
   | Bad_sync of
       { got : int
       ; expected : int
       }
+  | Bad_length of
+      { length : int
+      ; limit : int (** {!Data.Wire.response_limit}. *)
+      } (** A RESPONSE claiming more payload than any honest one carries. *)
   | Bad_status of int
   | File_not_found of string
+  | Write_refused of string
+  (** The device would not create the file — a name [Files.New] rejects. *)
   | Edit_not_found
   | Edit_not_unique of int
   | Load_failed of
