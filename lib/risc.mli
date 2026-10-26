@@ -1,27 +1,34 @@
 (** The RISC5 CPU core, memory map, and public API (port of [risc.c]).
 
-    The default machine carries 16 MiB of RAM but is bit-compatible with the reference
-    FPGA system for all software that stays within the 1 MB the boot ROM advertises (all
-    stock disk images do); see {!Risc_core.Risc} for the memory-map details. Words are
-    machine integers in [u32] range (see {!U32}). *)
+    The default machine ({!make}) is the reference FPGA system with 16 MiB of RAM: the
+    boot ROM, and so the kernel's MemLim and stack origin, are unchanged from the 1 MB
+    board, as is the 1024x768 framebuffer window at 0xE7F00; RAM simply continues above
+    1 MB for software that knows (no stock image does). Stock disk images therefore run
+    bit-identically. The one observable divergence from the board: an address above 1 MB
+    reaches real RAM, where the board's 20-bit bus would alias it into the low megabyte.
+    {!configure_memory} switches to the C emulator's configurable layout instead.
 
-(** Standard framebuffer width in pixels (overridable via {!configure_memory}). *)
-val framebuffer_width : int
+    Words are machine integers in [u32] range (see {!U32}). Values handed in — device
+    results, the clock — are taken modulo 2^32. *)
 
-(** Standard framebuffer height in pixels. *)
-val framebuffer_height : int
+(** The default machine's framebuffer width in pixels (1024). *)
+val default_screen_width : int
+
+(** The default machine's framebuffer height in pixels (768). *)
+val default_screen_height : int
 
 (** A damaged (dirty) rectangle of the framebuffer, in framebuffer-word columns and line
     rows. [y1 > y2] means "nothing damaged". *)
 type damage =
-  { mutable x1 : int
-  ; mutable x2 : int
-  ; mutable y1 : int
-  ; mutable y2 : int
+  { x1 : int
+  ; x2 : int
+  ; y1 : int
+  ; y2 : int
   }
 
 (** A snapshot of the architectural CPU state, for inspection and differential testing
-    (mirrors the C cosim [dump_state]). *)
+    (mirrors the C cosim [dump_state]). [pc] is a word address (byte address / 4), [r] a
+    copy of R0..R15, [flags] packed as in {!Cpu.flags}. *)
 type cpu_state =
   { pc : int
   ; r : int array
@@ -36,10 +43,12 @@ type t
     [risc_new]. *)
 val make : unit -> t
 
-(** [configure_memory t megabytes_ram screen_width screen_height] resizes RAM and the
-    framebuffer, patching the boot ROM. RAM clamps to 1..32 MB, each screen axis to
-    32..4096 (width rounded down to a 32-pixel multiple). Port of [risc_configure_memory]. *)
-val configure_memory : t -> int -> int -> int -> unit
+(** Switch to the C emulator's configurable layout: [megabytes] of RAM with a
+    [width]x[height] framebuffer right above it, the boot ROM patched to match. RAM
+    clamps to 1..32 MB, each screen axis to 32..4096 (width rounded down to a 32-pixel
+    multiple). It replaces RAM — see {!Cpu.ram} — and with [megabytes] under 16 leaves
+    less RAM than the default machine. Port of [risc_configure_memory]. *)
+val configure_memory : t -> megabytes:int -> width:int -> height:int -> unit
 
 (** Reset: jump to the boot ROM. Port of [risc_reset]. *)
 val reset : t -> unit
@@ -58,7 +67,8 @@ val set_leds : t -> Io.led -> unit
 (** Attach the serial line (PCLink or a raw host serial port). *)
 val set_serial : t -> Io.serial -> unit
 
-(** Attach an SPI slave at index 1 or 2 (others ignored). Port of [risc_set_spi]. *)
+(** Attach an SPI slave at index 1 (the SD card) or 2. Port of [risc_set_spi].
+    @raise Invalid_argument for any other index (the C ignores it). *)
 val set_spi : t -> int -> Io.spi -> unit
 
 (** Attach the host clipboard bridge. *)
@@ -100,6 +110,45 @@ val fb_height : t -> int
 (** Snapshot the architectural CPU state (for inspection / differential testing). *)
 val cpu_state : t -> cpu_state
 
+(** {2 Stepping and architectural state}
+
+    The CPU opened up for lockstep harnesses, loaders and debuggers: one instruction at
+    a time, and direct access to registers, flags and RAM. The arrays are the machine's
+    own, live and mutable (no copies on the hot path): writes land in the machine. *)
+module Cpu : sig
+  (** Execute exactly one instruction — no clock, no idle detection (compare {!run}).
+      A PC outside RAM and ROM resets the machine, as the C does. *)
+  val single_step : t -> unit
+
+  (** The program counter, as a word address (byte address / 4). *)
+  val pc : t -> int
+
+  val set_pc : t -> int -> unit
+
+  (** R0..R15, live: the machine's own 16-element array. *)
+  val regs : t -> int array
+
+  (** The H register (high word of MUL, remainder of DIV). *)
+  val h : t -> int
+
+  val set_h : t -> int -> unit
+
+  (** The ALU flags, packed [Z | N<<1 | C<<2 | V<<3] — test or build them with the
+      masks below. *)
+  val flags : t -> int
+
+  val set_flags : t -> int -> unit
+  val flag_z : int
+  val flag_n : int
+  val flag_c : int
+  val flag_v : int
+
+  (** RAM as words, live: word [i] is the 32-bit word at byte address [4 * i]. The
+      array is replaced, so a reference held from before goes stale, by
+      {!configure_memory} and [For_shim.configure_shim]; fetch it again after either. *)
+  val ram : t -> int array
+end
+
 (** Headless "shim" execution mode: the CPU's second mode, in which the whole MMIO region
     routes to a host backend ({!Io.shim}) and the machine boots an inner-core image
     instead of the boot ROM. Drives the image-build toolchain (see {!Shim}). {b Not} part
@@ -124,24 +173,18 @@ module For_shim : sig
   val shim_run : t -> int
 end
 
-(** White-box access used by the test suite only — {b not} part of the stable API. These
-    reach into machine internals the public interface deliberately hides (single-stepping,
-    raw MMIO, the register/RAM/flag state). *)
+(** White-box access for this repo's test suite — {b not} part of the stable API (raw
+    MMIO, byte access, the idle-detection counter). It also re-exports {!Cpu}, which it
+    held before {!Cpu} existed; code outside the test suite should use {!Cpu}, as this
+    re-export goes in a future major release. *)
 module For_tests : sig
+  include module type of Cpu
+
   val io_start : int
-  val single_step : t -> unit
   val load_io : t -> int -> int
   val store_io : t -> int -> int -> unit
   val load_byte : t -> int -> int
   val store_byte : t -> int -> int -> unit
-  val ram : t -> int array
-  val regs : t -> int array
-  val pc : t -> int
-  val set_pc : t -> int -> unit
-  val h : t -> int
-  val set_h : t -> int -> unit
-  val flags : t -> int
-  val set_flags : t -> int -> unit
   val progress : t -> int
   val set_progress : t -> int -> unit
 end

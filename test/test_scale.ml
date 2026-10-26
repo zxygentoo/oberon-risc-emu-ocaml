@@ -22,7 +22,7 @@ let () =
   (* texture_size: 32 pixels per framebuffer word, tracking configure_memory. *)
   let risc = Risc_core.Risc.make () in
   check "texture_size_default" (Render.texture_size risc = (1024, 768));
-  Risc_core.Risc.configure_memory risc 1 800 600;
+  Risc_core.Risc.configure_memory risc ~megabytes:1 ~width:800 ~height:600;
   check "texture_size_configured" (Render.texture_size risc = (800, 600));
   summary "scale checks"
 ;;

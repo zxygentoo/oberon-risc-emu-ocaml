@@ -28,7 +28,8 @@ let led_logger : RC.Io.led =
    disk. Shared by the windowed and headless paths. Port of build_machine. *)
 let build_machine (cfg : Cli.config) disk_path clipboard_host =
   let risc = RC.Headless.standard_machine ?disk:disk_path clipboard_host in
-  if cfg.configure then Core.configure_memory risc cfg.mem cfg.width cfg.height;
+  if cfg.configure
+  then Core.configure_memory risc ~megabytes:cfg.mem ~width:cfg.width ~height:cfg.height;
   if cfg.boot_from_serial then Core.set_switches risc 1;
   if cfg.leds then Core.set_leds risc led_logger;
   (* --serial-in/--serial-out replace PCLink with a raw host serial line. *)
