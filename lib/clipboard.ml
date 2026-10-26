@@ -66,11 +66,15 @@ let read_control t =
       data_len - count_crlf 0 0)
 ;;
 
+(* The announced length comes straight from a guest store, so the buffer grows
+   with the bytes that actually arrive instead of being allocated up front: one
+   store of 0xFFFFFFFE would otherwise zero-fill 4 GiB before a single byte came
+   (the C's malloc is lazy; an OCaml Bytes.make is not). *)
 let write_control t len =
   reset t;
   if len < U32.mask
   then (
-    t.data <- Bytes.make len '\000';
+    t.data <- Bytes.create (min len 4096);
     t.len <- len;
     t.state <- Put)
 ;;
@@ -99,6 +103,12 @@ let write_data t c =
   then (
     let byte = if c = Char.code '\r' then '\n' else Char.chr (c land 0xFF) in
     (* CR -> LF *)
+    if t.ptr = Bytes.length t.data
+    then (
+      (* Doubling, capped at the announced length: full exactly when it's reached. *)
+      let data = Bytes.create (min t.len (2 * t.ptr)) in
+      Bytes.blit t.data 0 data 0 t.ptr;
+      t.data <- data);
     Bytes.set t.data t.ptr byte;
     t.ptr <- t.ptr + 1;
     if t.ptr = t.len

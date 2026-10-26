@@ -35,6 +35,20 @@ let () =
    c.Io.clip_write_control 3;
    List.iter c.Io.clip_write_data [ Char.code 'a'; 0xE4; Char.code 'b' ];
    check "put_latin1" (!cell = "a\xC3\xA4b"));
+  (* A PUT longer than the initial buffer arrives whole through its growth. *)
+  (let cell, host = make_host "" in
+   let c = Clipboard.to_clipboard (Clipboard.create host) in
+   let text = String.init 10_000 (fun i -> Char.chr (Char.code 'a' + (i mod 26))) in
+   c.Io.clip_write_control (String.length text);
+   String.iter (fun ch -> c.Io.clip_write_data (Char.code ch)) text;
+   check "put_long" (!cell = text));
+  (* The announced length is a guest store: announcing 4 GiB must not allocate
+     it (it used to zero-fill all of it, an uncatchable out-of-memory). *)
+  (let c = Clipboard.to_clipboard (Clipboard.create Clipboard.noop_host) in
+   let before = Gc.allocated_bytes () in
+   c.Io.clip_write_control 0xFFFF_FFFE;
+   List.iter c.Io.clip_write_data [ Char.code 'h'; Char.code 'i' ];
+   check "huge_announce_no_alloc" (Gc.allocated_bytes () -. before < 1_000_000.));
   (* Empty clipboard reads zero. *)
   (let _cell, host = make_host "" in
    let c = Clipboard.to_clipboard (Clipboard.create host) in
