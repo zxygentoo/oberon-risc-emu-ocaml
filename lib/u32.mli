@@ -14,7 +14,7 @@ val mask64 : int64
 (** Reduce to the low 32 bits (the C/Rust [u32] cast / wrapping result). *)
 val wrap : int -> int
 
-(** Reinterpret a [u32]-range value as a signed 32-bit integer in [-2^31, 2^31). *)
+(** Reinterpret a [u32]-range value as a signed 32-bit integer, -2^31 to 2^31 - 1. *)
 val to_i32 : int -> int
 
 (** Wrapping 32-bit addition. *)
