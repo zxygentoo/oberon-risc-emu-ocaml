@@ -276,6 +276,7 @@ let single_step t =
        {!Risc5_isa.decode}; on a non-flambda build it costs a few % on the hot path versus
        a raw p/q branch tree — immaterial for the emulator, and free under flambda2. *)
     let open Risc5_isa in
+    let open Word in
     match kind ir with
     | Register ->
       let a = ra ir

@@ -8,13 +8,13 @@
     Two layers, one truth:
 
     - accessors (Layer 1): [word -> int/bool], allocation-free, [@inline] in the
-      [.ml]. The emulator's hot loop ({!Risc.single_step}) and [decode] are both
+      [.ml]. The emulator's hot loop ({!Risc.Cpu.single_step}) and [decode] are both
       built on these; they {e are} the bit-layout truth.
     - ADT + codec (Layer 2): the faithful, encodable instruction, for
       assemblers, disassemblers, and tests. Never materialized in the emulator
       loop (that is what keeps the loop non-allocating).
 
-    Encoding (Wirth RISC5), field-for-field against {!Risc.single_step}:
+    Encoding (Wirth RISC5), field-for-field against {!Risc.Cpu.single_step}:
     {v
       p = bit 31   q = bit 30   u = bit 29   v = bit 28
       ra = 27..24  rb = 23..20  op = 19..16  rc = 3..0   imm16 = 15..0
@@ -59,7 +59,7 @@ type op =
   | Fdv
 
 val int_of_op : op -> int
-val op_of_int : int -> op (* total: all 16 values map *)
+val op_of_int : int -> op (* 0..15; anything else raises Invalid_argument *)
 
 (* The 3-bit branch condition (26..24), under its ISA mnemonic. *)
 type cond =
@@ -73,33 +73,38 @@ type cond =
   | True (* always *)
 
 val int_of_cond : cond -> int
-val cond_of_int : int -> cond (* total: all 8 values map *)
+val cond_of_int : int -> cond (* 0..7; anything else raises Invalid_argument *)
 
 (** {2 Layer 1: accessors — the emulator's fast path}
 
     All [@inline] in the [.ml], no allocation. These are the bit-layout truth;
-    everything else builds on them. *)
+    everything else builds on them. They live in {!Word}, apart from the ADT, so a
+    local open of this module for building instructions —
+    [Risc5_isa.(Alu { op; u; v; a; b; operand })] — doesn't capture punned fields
+    such as [u] and [v] with the accessors of the same name. *)
 
 type kind =
   | Register
   | Memory
   | Branch
 
-val kind : word -> kind (* p, then q *)
-val p : word -> bool (* bit 31 *)
-val q : word -> bool (* bit 30 *)
-val u : word -> bool (* bit 29 *)
-val v : word -> bool (* bit 28 *)
-val ra : word -> reg (* 27..24 : dest (register/memory); unused by branch *)
-val rb : word -> reg (* 23..20 : source / memory base *)
-val rc : word -> reg (* 3..0 : 2nd source / branch register target *)
-val op_of_word : word -> op (* 19..16 *)
-val imm16 : word -> int (* 15..0, zero-extended (raw field) *)
-val imm_value : word -> int (* 15..0, one-extended iff v — the F1 operand *)
-val off20 : word -> int (* 19..0, sign-extended (memory offset) *)
-val off24 : word -> int (* 23..0, sign-extended (branch word offset) *)
-val cond_of_word : word -> cond (* 26..24 *)
-val cond_neg : word -> bool (* bit 27 : negate the condition *)
+module Word : sig
+  val kind : word -> kind (* p, then q *)
+  val p : word -> bool (* bit 31 *)
+  val q : word -> bool (* bit 30 *)
+  val u : word -> bool (* bit 29 *)
+  val v : word -> bool (* bit 28 *)
+  val ra : word -> reg (* 27..24 : dest (register/memory); unused by branch *)
+  val rb : word -> reg (* 23..20 : source / memory base *)
+  val rc : word -> reg (* 3..0 : 2nd source / branch register target *)
+  val op_of_word : word -> op (* 19..16 *)
+  val imm16 : word -> int (* 15..0, zero-extended (raw field) *)
+  val imm_value : word -> int (* 15..0, one-extended iff v — the F1 operand *)
+  val off20 : word -> int (* 19..0, sign-extended (memory offset) *)
+  val off24 : word -> int (* 23..0, sign-extended (branch word offset) *)
+  val cond_of_word : word -> cond (* 26..24 *)
+  val cond_neg : word -> bool (* bit 27 : negate the condition *)
+end
 
 (** {2 Layer 2: the faithful, concrete ADT — legal states only}
 

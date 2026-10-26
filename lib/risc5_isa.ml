@@ -54,7 +54,8 @@ let int_of_op = function
   | Fdv -> 15
 ;;
 
-(* Decode the 4-bit opcode field; all 16 values map. *)
+(* Decode the 4-bit opcode field: all 16 values map, and nothing else does — the
+   default arm costs the hot loop nothing (its operand is always masked). *)
 let op_of_int = function
   | 0 -> Mov
   | 1 -> Lsl
@@ -71,7 +72,8 @@ let op_of_int = function
   | 12 -> Fad
   | 13 -> Fsb
   | 14 -> Fml
-  | _ -> Fdv
+  | 15 -> Fdv
+  | n -> invalid_arg (Printf.sprintf "Risc5_isa.op_of_int: %d outside 0..15" n)
 ;;
 
 type cond =
@@ -95,7 +97,7 @@ let int_of_cond = function
   | True -> 7
 ;;
 
-(* Decode the 3-bit condition field; all 8 values map. *)
+(* Decode the 3-bit condition field: all 8 values map, and nothing else does. *)
 let cond_of_int = function
   | 0 -> Mi
   | 1 -> Eq
@@ -104,46 +106,54 @@ let cond_of_int = function
   | 4 -> Ls
   | 5 -> Lt
   | 6 -> Le
-  | _ -> True
+  | 7 -> True
+  | n -> invalid_arg (Printf.sprintf "Risc5_isa.cond_of_int: %d outside 0..7" n)
 ;;
 
 (* ── Layer 1: accessors. All [@inline], allocation-free — the bit-layout truth
    the hot loop and [decode] share. ── *)
-
 type kind =
   | Register
   | Memory
   | Branch
 
-let[@inline] p w = w land pbit <> 0
-let[@inline] q w = w land qbit <> 0
-let[@inline] u w = w land ubit <> 0
-let[@inline] v w = w land vbit <> 0
-let[@inline] kind w = if not (p w) then Register else if not (q w) then Memory else Branch
-let[@inline] ra w = (w lsr 24) land 0xF
-let[@inline] rb w = (w lsr 20) land 0xF
-let[@inline] rc w = w land 0xF
-let[@inline] op_of_word w = op_of_int ((w lsr 16) land 0xF)
-let[@inline] imm16 w = w land 0xFFFF
+module Word = struct
+  let[@inline] p w = w land pbit <> 0
+  let[@inline] q w = w land qbit <> 0
+  let[@inline] u w = w land ubit <> 0
+  let[@inline] v w = w land vbit <> 0
 
-(* The F1 operand: one-fill the top 16 bits when v is set (Wirth RISC5's
-   immediate "sign" modifier), else zero-extend. *)
-let[@inline] imm_value w = if v w then 0xFFFF_0000 lor (w land 0xFFFF) else w land 0xFFFF
+  let[@inline] kind w =
+    if not (p w) then Register else if not (q w) then Memory else Branch
+  ;;
 
-(* Sign-extend the 20-bit memory offset. *)
-let[@inline] off20 w =
-  let o = w land 0x000F_FFFF in
-  (o lxor 0x0008_0000) - 0x0008_0000
-;;
+  let[@inline] ra w = (w lsr 24) land 0xF
+  let[@inline] rb w = (w lsr 20) land 0xF
+  let[@inline] rc w = w land 0xF
+  let[@inline] op_of_word w = op_of_int ((w lsr 16) land 0xF)
+  let[@inline] imm16 w = w land 0xFFFF
 
-(* Sign-extend the 24-bit branch word offset. *)
-let[@inline] off24 w =
-  let o = w land 0x00FF_FFFF in
-  (o lxor 0x0080_0000) - 0x0080_0000
-;;
+  (* The F1 operand: one-fill the top 16 bits when v is set (Wirth RISC5's
+     immediate "sign" modifier), else zero-extend. *)
+  let[@inline] imm_value w =
+    if v w then 0xFFFF_0000 lor (w land 0xFFFF) else w land 0xFFFF
+  ;;
 
-let[@inline] cond_of_word w = cond_of_int ((w lsr 24) land 7)
-let[@inline] cond_neg w = (w lsr 27) land 1 <> 0
+  (* Sign-extend the 20-bit memory offset. *)
+  let[@inline] off20 w =
+    let o = w land 0x000F_FFFF in
+    (o lxor 0x0008_0000) - 0x0008_0000
+  ;;
+
+  (* Sign-extend the 24-bit branch word offset. *)
+  let[@inline] off24 w =
+    let o = w land 0x00FF_FFFF in
+    (o lxor 0x0080_0000) - 0x0080_0000
+  ;;
+
+  let[@inline] cond_of_word w = cond_of_int ((w lsr 24) land 7)
+  let[@inline] cond_neg w = (w lsr 27) land 1 <> 0
+end
 
 (* ── Layer 2: the faithful ADT + codec — never materialized in the hot loop. ── *)
 
@@ -240,6 +250,7 @@ let encode i =
 ;;
 
 let decode w =
+  let open Word in
   match kind w with
   | Register ->
     let operand = if q w then Imm (imm16 w) else Reg (rc w) in

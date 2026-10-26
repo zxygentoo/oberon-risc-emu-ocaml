@@ -1,6 +1,6 @@
 (* Property + differential tests for the shared {!Risc5_isa} instruction codec.
 
-   Layer 1 (the accessors) is already proven by the whole suite: {!Risc.single_step}
+   Layer 1 (the accessors) is already proven by the whole suite: {!Risc.Cpu.single_step}
    now decodes through [p]/[q]/[ra]/[op_of_word]/… so every instruction, cosim, and
    boot-golden check *is* an accessor check. These tests cover Layer 2 — [encode] /
    [decode], which the emulator's hot loop does NOT use — via:
@@ -87,6 +87,11 @@ let g_bad_instr =
     ; G.map (fun o -> br (To_off o)) (g_outside (-0x0080_0000) 0x007F_FFFF)
     ]
 ;;
+
+(* Building an instruction under a local open with punned fields: this used to fail to
+   compile, the accessors [u]/[v] capturing the puns. Compiling is the test; the
+   property below checks the word. *)
+let punned ~u ~v = Risc5_isa.(Alu { op = Add; u; v; a = 1; b = 2; operand = Reg 3 })
 
 (* Every field at both ends of its range. *)
 let boundary_instrs =
@@ -187,6 +192,7 @@ let tests =
          | To_off off -> w = e_br_imm (bit neg) (int_of_cond cond) (bit link) off)
   ; (* [decode]'s fields are exactly what the individual accessors read. *)
     Q.Test.make ~name:"decode fields agree with the accessors" ~count:5000 u32 (fun w ->
+      let open Word in
       match decode w with
       | Alu { op; u = uu; v = vv; a; b = bb; operand } ->
         kind w = Register
@@ -236,6 +242,23 @@ let tests =
          match encode i with
          | _ -> false
          | exception Invalid_argument _ -> true)
+  ; Q.Test.make ~name:"punned local open builds the right word" ~count:1 G.unit (fun () ->
+      encode (punned ~u:true ~v:false) = e_reg 0 1 0 1 2 8 3)
+  ; Q.Test.make
+      ~name:"op_of_int / cond_of_int reject out-of-range"
+      ~count:1
+      G.unit
+      (fun () ->
+         let raises f =
+           match f () with
+           | _ -> false
+           | exception Invalid_argument _ -> true
+         in
+         raises (fun () -> op_of_int 16)
+         && raises (fun () -> op_of_int (-1))
+         && raises (fun () -> cond_of_int 8)
+         && op_of_int 15 = Fdv
+         && cond_of_int 7 = True)
   ; Q.Test.make ~name:"encode accepts every boundary value" ~count:1 G.unit (fun () ->
       List.for_all (fun i -> decode (encode i) = i) boundary_instrs)
   ]
